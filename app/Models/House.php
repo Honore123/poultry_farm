@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class House extends Model
+{
+    protected $fillable = [
+        'farm_id',
+        'name',
+        'capacity',
+        'notes',
+    ];
+
+    public function farm(): BelongsTo
+    {
+        return $this->belongsTo(Farm::class);
+    }
+
+    public function batches(): HasMany
+    {
+        return $this->hasMany(Batch::class);
+    }
+
+    public function expenses(): HasMany
+    {
+        return $this->hasMany(Expense::class);
+    }
+}
+
