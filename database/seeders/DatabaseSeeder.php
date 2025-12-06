@@ -20,27 +20,42 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // First, seed roles and permissions
-        $this->call([RolesAndPermissionsSeeder::class,
-        RearingTargetsSeeder::class,
-        ProductionTargetsSeeder::class,
-        EggGradingTargetsSeeder::class,
-        ProductionCycleTargetsSeeder::class,]);
+        // =========================================================
+        // ESSENTIAL SEEDERS - Keep these for production
+        // These contain reference data needed for the app to work
+        // =========================================================
+        $this->call([
+            RolesAndPermissionsSeeder::class,    // Required: User roles and permissions
+            RearingTargetsSeeder::class,          // Required: Rearing phase targets
+            ProductionTargetsSeeder::class,       // Required: Production phase targets
+            EggGradingTargetsSeeder::class,       // Required: Egg grading targets
+            ProductionCycleTargetsSeeder::class,  // Required: Production cycle targets
+        ]);
 
-        // Create test users
-        $this->createTestUsers();
-
-        // Seed master data
-        $this->seedFarms();
-        $this->seedInventoryItems();
-        $this->seedSuppliers();
-        $this->seedCustomers();
+        // Seed feed intake targets (useful reference data)
         $this->seedFeedIntakeTargets();
-        $this->seedTestBatch();
 
-        $this->command->info('✅ All master data seeded successfully!');
+        $this->command->info('✅ Essential reference data seeded successfully!');
+
+        // =========================================================
+        // DEMO/TEST DATA - Comment out for production
+        // Uncomment these for development/testing only
+        // =========================================================
+        
+        // $this->createTestUsers();      // Demo users with weak passwords
+        // $this->seedFarms();            // Demo farm and houses
+        // $this->seedInventoryItems();   // Demo inventory items
+        // $this->seedSuppliers();        // Demo suppliers
+        // $this->seedCustomers();        // Demo customers
+        // $this->seedTestBatch();        // Demo batches
+
+        // $this->command->info('✅ Demo data seeded successfully!');
     }
 
+    /**
+     * Create test users for development
+     * DO NOT USE IN PRODUCTION - weak passwords!
+     */
     protected function createTestUsers(): void
     {
         // Admin user
