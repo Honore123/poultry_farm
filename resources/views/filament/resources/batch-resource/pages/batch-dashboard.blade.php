@@ -276,290 +276,317 @@
         </x-filament::section>
     </div>
 
+    {{-- Prepare chart data in PHP --}}
+    @php
+        // Safely get all chart data with error handling
+        try {
+            $layingData = $this->getLayingRateData();
+        } catch (\Exception $e) {
+            $layingData = ['labels' => [], 'data' => [], 'target' => []];
+        }
+        
+        try {
+            $feedData = $this->getFeedConsumptionData();
+        } catch (\Exception $e) {
+            $feedData = ['labels' => [], 'data' => [], 'target' => []];
+        }
+        
+        try {
+            $eggData = $this->getEggProductionData();
+        } catch (\Exception $e) {
+            $eggData = ['labels' => [], 'total' => [], 'good' => [], 'cracked' => [], 'dirty' => [], 'soft' => [], 'target' => []];
+        }
+        
+        try {
+            $feedEggData = $this->getFeedPerEggData();
+        } catch (\Exception $e) {
+            $feedEggData = ['labels' => [], 'data' => []];
+        }
+        
+        try {
+            $mortalityData = $this->getMortalityData();
+        } catch (\Exception $e) {
+            $mortalityData = ['labels' => [], 'daily' => [], 'cumulative' => [], 'expected_mortality' => []];
+        }
+        
+        // Prepare JSON-safe data
+        $chartData = [
+            'laying' => [
+                'labels' => $layingData['labels'] ?? [],
+                'data' => $layingData['data'] ?? [],
+                'target' => $layingData['target'] ?? [],
+            ],
+            'feed' => [
+                'labels' => $feedData['labels'] ?? [],
+                'data' => $feedData['data'] ?? [],
+                'target' => $feedData['target'] ?? [],
+            ],
+            'eggs' => [
+                'labels' => $eggData['labels'] ?? [],
+                'good' => $eggData['good'] ?? [],
+                'cracked' => $eggData['cracked'] ?? [],
+                'dirty' => $eggData['dirty'] ?? [],
+                'soft' => $eggData['soft'] ?? [],
+                'target' => $eggData['target'] ?? [],
+            ],
+            'feedPerEgg' => [
+                'labels' => $feedEggData['labels'] ?? [],
+                'data' => $feedEggData['data'] ?? [],
+            ],
+            'mortality' => [
+                'labels' => $mortalityData['labels'] ?? [],
+                'daily' => $mortalityData['daily'] ?? [],
+                'cumulative' => $mortalityData['cumulative'] ?? [],
+            ],
+        ];
+    @endphp
+
     {{-- Chart.js Scripts --}}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Store chart instances to destroy them before recreating
-        let chartInstances = {};
+        (function() {
+            // Chart data from PHP
+            var chartData = {!! json_encode($chartData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) !!};
+            
+            // Store chart instances to destroy them before recreating
+            var chartInstances = {};
 
-        function destroyExistingCharts() {
-            Object.values(chartInstances).forEach(chart => {
-                if (chart) chart.destroy();
-            });
-            chartInstances = {};
-        }
-
-        // Use setTimeout to ensure DOM is ready in Livewire context
-        function initCharts() {
-            // Destroy existing charts first
-            destroyExistingCharts();
-
-            const isDark = document.documentElement.classList.contains('dark');
-            const textColor = isDark ? '#9CA3AF' : '#6B7280';
-            const gridColor = isDark ? '#374151' : '#E5E7EB';
-
-            // Laying Rate Chart with Target
-            @php 
-                try {
-                    $layingData = $this->getLayingRateData(); 
-                } catch (\Exception $e) {
-                    $layingData = ['labels' => [], 'data' => [], 'target' => []];
-                }
-            @endphp
-            @if(count($layingData['labels'] ?? []) > 0)
-            if (document.getElementById('layingRateChart')) {
-            chartInstances.layingRate = new Chart(document.getElementById('layingRateChart'), {
-                type: 'line',
-                data: {
-                    labels: @json($layingData['labels']),
-                    datasets: [
-                        {
-                            label: 'Actual Laying Rate %',
-                            data: @json($layingData['data']),
-                            borderColor: '#10B981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 3,
-                        },
-                        {
-                            label: 'Target %',
-                            data: @json($layingData['target']),
-                            borderColor: '#6366F1',
-                            borderDash: [5, 5],
-                            fill: false,
-                            tension: 0,
-                            pointRadius: 0,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { intersect: false, mode: 'index' },
-                    scales: {
-                        y: { min: 0, max: 100, ticks: { color: textColor }, grid: { color: gridColor } },
-                        x: { ticks: { color: textColor }, grid: { color: gridColor } }
-                    },
-                    plugins: { 
-                        legend: { labels: { color: textColor }, position: 'bottom' },
-                        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toFixed(1) + '%' : 'N/A') } }
+            function destroyExistingCharts() {
+                Object.keys(chartInstances).forEach(function(key) {
+                    if (chartInstances[key]) {
+                        chartInstances[key].destroy();
                     }
-                }
-            });
+                });
+                chartInstances = {};
             }
-            @endif
 
-            // Feed Consumption Chart with Target
-            @php 
+            function initCharts() {
                 try {
-                    $feedData = $this->getFeedConsumptionData(); 
-                } catch (\Exception $e) {
-                    $feedData = ['labels' => [], 'data' => [], 'target' => []];
-                }
-            @endphp
-            @if(count($feedData['labels'] ?? []) > 0)
-            if (document.getElementById('feedConsumptionChart')) {
-            chartInstances.feedConsumption = new Chart(document.getElementById('feedConsumptionChart'), {
-                type: 'bar',
-                data: {
-                    labels: @json($feedData['labels']),
-                    datasets: [
-                        {
-                            label: 'Actual Feed (kg)',
-                            data: @json($feedData['data']),
-                            backgroundColor: '#F59E0B',
-                            borderRadius: 4,
-                        },
-                        {
-                            label: 'Target Feed (kg)',
-                            data: @json($feedData['target']),
+                    destroyExistingCharts();
+
+                    var isDark = document.documentElement.classList.contains('dark');
+                    var textColor = isDark ? '#9CA3AF' : '#6B7280';
+                    var gridColor = isDark ? '#374151' : '#E5E7EB';
+
+                    // Laying Rate Chart
+                    if (chartData.laying.labels.length > 0 && document.getElementById('layingRateChart')) {
+                        chartInstances.layingRate = new Chart(document.getElementById('layingRateChart'), {
                             type: 'line',
-                            borderColor: '#6366F1',
-                            borderDash: [5, 5],
-                            fill: false,
-                            tension: 0,
-                            pointRadius: 0,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { intersect: false, mode: 'index' },
-                    scales: {
-                        y: { min: 0, ticks: { color: textColor }, grid: { color: gridColor } },
-                        x: { ticks: { color: textColor }, grid: { color: gridColor } }
-                    },
-                    plugins: { 
-                        legend: { labels: { color: textColor }, position: 'bottom' },
-                        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toFixed(1) + ' kg' : 'N/A') } }
+                            data: {
+                                labels: chartData.laying.labels,
+                                datasets: [
+                                    {
+                                        label: 'Actual Laying Rate %',
+                                        data: chartData.laying.data,
+                                        borderColor: '#10B981',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                        fill: true,
+                                        tension: 0.3,
+                                        pointRadius: 3
+                                    },
+                                    {
+                                        label: 'Target %',
+                                        data: chartData.laying.target,
+                                        borderColor: '#6366F1',
+                                        borderDash: [5, 5],
+                                        fill: false,
+                                        tension: 0,
+                                        pointRadius: 0
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { intersect: false, mode: 'index' },
+                                scales: {
+                                    y: { min: 0, max: 100, ticks: { color: textColor }, grid: { color: gridColor } },
+                                    x: { ticks: { color: textColor }, grid: { color: gridColor } }
+                                },
+                                plugins: { 
+                                    legend: { labels: { color: textColor }, position: 'bottom' },
+                                    tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toFixed(1) + '%' : 'N/A'); } } }
+                                }
+                            }
+                        });
                     }
-                }
-            });
-            }
-            @endif
 
-            // Egg Production Chart with Target
-            @php 
-                try {
-                    $eggData = $this->getEggProductionData(); 
-                } catch (\Exception $e) {
-                    $eggData = ['labels' => [], 'total' => [], 'good' => [], 'cracked' => [], 'dirty' => [], 'soft' => [], 'target' => []];
-                }
-            @endphp
-            @if(count($eggData['labels'] ?? []) > 0)
-            if (document.getElementById('eggProductionChart')) {
-            chartInstances.eggProduction = new Chart(document.getElementById('eggProductionChart'), {
-                type: 'bar',
-                data: {
-                    labels: @json($eggData['labels']),
-                    datasets: [
-                        { label: 'Good', data: @json($eggData['good']), backgroundColor: '#10B981', stack: 'stack', borderRadius: 2 },
-                        { label: 'Cracked', data: @json($eggData['cracked']), backgroundColor: '#EF4444', stack: 'stack' },
-                        { label: 'Dirty', data: @json($eggData['dirty']), backgroundColor: '#F59E0B', stack: 'stack' },
-                        { label: 'Soft', data: @json($eggData['soft']), backgroundColor: '#8B5CF6', stack: 'stack' },
-                        {
-                            label: 'Target',
-                            data: @json($eggData['target']),
+                    // Feed Consumption Chart
+                    if (chartData.feed.labels.length > 0 && document.getElementById('feedConsumptionChart')) {
+                        chartInstances.feedConsumption = new Chart(document.getElementById('feedConsumptionChart'), {
+                            type: 'bar',
+                            data: {
+                                labels: chartData.feed.labels,
+                                datasets: [
+                                    {
+                                        label: 'Actual Feed (kg)',
+                                        data: chartData.feed.data,
+                                        backgroundColor: '#F59E0B',
+                                        borderRadius: 4
+                                    },
+                                    {
+                                        label: 'Target Feed (kg)',
+                                        data: chartData.feed.target,
+                                        type: 'line',
+                                        borderColor: '#6366F1',
+                                        borderDash: [5, 5],
+                                        fill: false,
+                                        tension: 0,
+                                        pointRadius: 0
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { intersect: false, mode: 'index' },
+                                scales: {
+                                    y: { min: 0, ticks: { color: textColor }, grid: { color: gridColor } },
+                                    x: { ticks: { color: textColor }, grid: { color: gridColor } }
+                                },
+                                plugins: { 
+                                    legend: { labels: { color: textColor }, position: 'bottom' },
+                                    tooltip: { callbacks: { label: function(ctx) { return ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toFixed(1) + ' kg' : 'N/A'); } } }
+                                }
+                            }
+                        });
+                    }
+
+                    // Egg Production Chart
+                    if (chartData.eggs.labels.length > 0 && document.getElementById('eggProductionChart')) {
+                        chartInstances.eggProduction = new Chart(document.getElementById('eggProductionChart'), {
+                            type: 'bar',
+                            data: {
+                                labels: chartData.eggs.labels,
+                                datasets: [
+                                    { label: 'Good', data: chartData.eggs.good, backgroundColor: '#10B981', stack: 'stack', borderRadius: 2 },
+                                    { label: 'Cracked', data: chartData.eggs.cracked, backgroundColor: '#EF4444', stack: 'stack' },
+                                    { label: 'Dirty', data: chartData.eggs.dirty, backgroundColor: '#F59E0B', stack: 'stack' },
+                                    { label: 'Soft', data: chartData.eggs.soft, backgroundColor: '#8B5CF6', stack: 'stack' },
+                                    {
+                                        label: 'Target',
+                                        data: chartData.eggs.target,
+                                        type: 'line',
+                                        borderColor: '#6366F1',
+                                        borderDash: [5, 5],
+                                        fill: false,
+                                        tension: 0,
+                                        pointRadius: 0
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { intersect: false, mode: 'index' },
+                                scales: {
+                                    y: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } },
+                                    x: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } }
+                                },
+                                plugins: { legend: { labels: { color: textColor }, position: 'bottom' } }
+                            }
+                        });
+                    }
+
+                    // Feed per Egg Chart
+                    if (chartData.feedPerEgg.labels.length > 0 && document.getElementById('feedPerEggChart')) {
+                        chartInstances.feedPerEgg = new Chart(document.getElementById('feedPerEggChart'), {
                             type: 'line',
-                            borderColor: '#6366F1',
-                            borderDash: [5, 5],
-                            fill: false,
-                            tension: 0,
-                            pointRadius: 0,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { intersect: false, mode: 'index' },
-                    scales: {
-                        y: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } },
-                        x: { stacked: true, ticks: { color: textColor }, grid: { color: gridColor } }
-                    },
-                    plugins: { legend: { labels: { color: textColor }, position: 'bottom' } }
-                }
-            });
-            }
-            @endif
-
-            // Feed per Egg Chart
-            @php 
-                try {
-                    $feedEggData = $this->getFeedPerEggData(); 
-                } catch (\Exception $e) {
-                    $feedEggData = ['labels' => [], 'data' => []];
-                }
-            @endphp
-            @if(count($feedEggData['labels'] ?? []) > 0)
-            if (document.getElementById('feedPerEggChart')) {
-            chartInstances.feedPerEgg = new Chart(document.getElementById('feedPerEggChart'), {
-                type: 'line',
-                data: {
-                    labels: @json($feedEggData['labels']),
-                    datasets: [{
-                        label: 'Grams per Egg',
-                        data: @json($feedEggData['data']),
-                        borderColor: '#3B82F6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 3,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { min: 0, ticks: { color: textColor }, grid: { color: gridColor } },
-                        x: { ticks: { color: textColor }, grid: { color: gridColor } }
-                    },
-                    plugins: { 
-                        legend: { labels: { color: textColor } },
-                        tooltip: { callbacks: { label: (ctx) => 'Feed/Egg: ' + ctx.raw + 'g' } }
+                            data: {
+                                labels: chartData.feedPerEgg.labels,
+                                datasets: [{
+                                    label: 'Grams per Egg',
+                                    data: chartData.feedPerEgg.data,
+                                    borderColor: '#3B82F6',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                    fill: true,
+                                    tension: 0.3,
+                                    pointRadius: 3
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    y: { min: 0, ticks: { color: textColor }, grid: { color: gridColor } },
+                                    x: { ticks: { color: textColor }, grid: { color: gridColor } }
+                                },
+                                plugins: { 
+                                    legend: { labels: { color: textColor } },
+                                    tooltip: { callbacks: { label: function(ctx) { return 'Feed/Egg: ' + ctx.raw + 'g'; } } }
+                                }
+                            }
+                        });
                     }
-                }
-            });
-            }
-            @endif
 
-            // Mortality Chart
-            @php 
-                try {
-                    $mortalityData = $this->getMortalityData(); 
-                } catch (\Exception $e) {
-                    $mortalityData = ['labels' => [], 'daily' => [], 'cumulative' => [], 'expected_mortality' => []];
+                    // Mortality Chart
+                    if (chartData.mortality.labels.length > 0 && document.getElementById('mortalityChart')) {
+                        chartInstances.mortality = new Chart(document.getElementById('mortalityChart'), {
+                            type: 'bar',
+                            data: {
+                                labels: chartData.mortality.labels,
+                                datasets: [
+                                    { 
+                                        label: 'Daily Deaths', 
+                                        data: chartData.mortality.daily, 
+                                        backgroundColor: '#EF4444', 
+                                        yAxisID: 'y',
+                                        borderRadius: 4
+                                    },
+                                    { 
+                                        label: 'Cumulative', 
+                                        data: chartData.mortality.cumulative, 
+                                        type: 'line', 
+                                        borderColor: '#6B7280', 
+                                        backgroundColor: 'transparent', 
+                                        yAxisID: 'y1',
+                                        tension: 0.3
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { intersect: false, mode: 'index' },
+                                scales: {
+                                    y: { position: 'left', ticks: { color: textColor }, grid: { color: gridColor }, title: { display: true, text: 'Daily', color: textColor } },
+                                    y1: { position: 'right', ticks: { color: textColor }, grid: { display: false }, title: { display: true, text: 'Cumulative', color: textColor } },
+                                    x: { ticks: { color: textColor }, grid: { color: gridColor } }
+                                },
+                                plugins: { legend: { labels: { color: textColor }, position: 'bottom' } }
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error initializing charts:', e);
                 }
-            @endphp
-            @if(count($mortalityData['labels'] ?? []) > 0)
-            if (document.getElementById('mortalityChart')) {
-            chartInstances.mortality = new Chart(document.getElementById('mortalityChart'), {
-                type: 'bar',
-                data: {
-                    labels: @json($mortalityData['labels']),
-                    datasets: [
-                        { 
-                            label: 'Daily Deaths', 
-                            data: @json($mortalityData['daily']), 
-                            backgroundColor: '#EF4444', 
-                            yAxisID: 'y',
-                            borderRadius: 4,
-                        },
-                        { 
-                            label: 'Cumulative', 
-                            data: @json($mortalityData['cumulative']), 
-                            type: 'line', 
-                            borderColor: '#6B7280', 
-                            backgroundColor: 'transparent', 
-                            yAxisID: 'y1',
-                            tension: 0.3,
-                        },
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { intersect: false, mode: 'index' },
-                    scales: {
-                        y: { position: 'left', ticks: { color: textColor }, grid: { color: gridColor }, title: { display: true, text: 'Daily', color: textColor } },
-                        y1: { position: 'right', ticks: { color: textColor }, grid: { display: false }, title: { display: true, text: 'Cumulative', color: textColor } },
-                        x: { ticks: { color: textColor }, grid: { color: gridColor } }
-                    },
-                    plugins: { legend: { labels: { color: textColor }, position: 'bottom' } }
-                }
-            });
             }
-            @endif
-        }
 
-        // Wait for Chart.js to load then initialize
-        function waitForChartJs(callback) {
-            if (typeof Chart !== 'undefined') {
-                callback();
+            function waitForChartJs(callback) {
+                if (typeof Chart !== 'undefined') {
+                    callback();
+                } else {
+                    setTimeout(function() { waitForChartJs(callback); }, 50);
+                }
+            }
+
+            // Initialize charts when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    waitForChartJs(initCharts);
+                });
             } else {
-                setTimeout(function() { waitForChartJs(callback); }, 50);
+                setTimeout(function() {
+                    waitForChartJs(initCharts);
+                }, 100);
             }
-        }
 
-        // Initialize charts when DOM is ready or when Livewire navigates
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                waitForChartJs(initCharts);
+            // Re-init on Livewire navigation
+            document.addEventListener('livewire:navigated', function() {
+                setTimeout(function() {
+                    waitForChartJs(initCharts);
+                }, 100);
             });
-        } else {
-            // DOM already loaded, init immediately with small delay for Livewire
-            setTimeout(function() {
-                waitForChartJs(initCharts);
-            }, 100);
-        }
-
-        // Re-init on Livewire navigation (for SPA-like behavior)
-        document.addEventListener('livewire:navigated', function() {
-            setTimeout(function() {
-                waitForChartJs(initCharts);
-            }, 100);
-        });
+        })();
     </script>
 </x-filament-panels::page>
