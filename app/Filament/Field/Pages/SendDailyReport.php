@@ -6,7 +6,6 @@ use App\Models\Batch;
 use App\Models\DailyFeedIntake;
 use App\Models\DailyWaterUsage;
 use App\Models\HealthTreatment;
-use App\Models\InventoryItem;
 use App\Models\InventoryLot;
 use App\Models\InventoryMovement;
 use App\Models\MortalityLog;
@@ -334,22 +333,12 @@ class SendDailyReport extends Page implements HasForms
         if (!empty($data['additional_treatments'])) {
             foreach ($data['additional_treatments'] as $treatmentData) {
                 if (!empty($treatmentData['product'])) {
-                    // Parse dosage - try to extract ml/L value if present for backward compatibility
-                    $dosageMl = null;
-                    if (!empty($treatmentData['dosage'])) {
-                        // Try to extract numeric value for ml/L
-                        if (preg_match('/(\d+(?:\.\d+)?)\s*ml/i', $treatmentData['dosage'], $matches)) {
-                            $dosageMl = floatval($matches[1]);
-                        }
-                    }
-                    
                     $savedTreatment = HealthTreatment::create([
                         'batch_id' => $batch->id,
                         'date' => $date,
                         'product' => $treatmentData['product'],
                         'reason' => $treatmentData['reason'] ?? null,
                         'dosage' => $treatmentData['dosage'] ?? null,
-                        'dosage_per_liter_ml' => $dosageMl,
                         'duration_days' => !empty($treatmentData['duration_days']) ? intval($treatmentData['duration_days']) : null,
                     ]);
                     
@@ -381,8 +370,9 @@ class SendDailyReport extends Page implements HasForms
         // Build treatments text
         $treatmentsText = '';
         foreach ($treatments as $treatment) {
+            // Use dosage field, fallback to legacy dosage_per_liter_ml for old records
             $dosageText = $treatment->dosage 
-                ?? ($treatment->dosage_per_liter_ml ? "{$treatment->dosage_per_liter_ml}ml/L" : '')
+                ?: ($treatment->dosage_per_liter_ml ? "{$treatment->dosage_per_liter_ml}ml/L" : '')
                 ?: ($treatment->reason ?? '');
             $treatmentsText .= "\n-{$treatment->product}" . ($dosageText ? ":{$dosageText}" : '');
         }

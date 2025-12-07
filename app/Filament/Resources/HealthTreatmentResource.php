@@ -60,14 +60,11 @@ class HealthTreatmentResource extends Resource
                             ->rows(2)
                             ->placeholder('Reason for treatment (symptoms observed)')
                             ->maxLength(500),
-                        Forms\Components\TextInput::make('dosage_per_liter_ml')
+                        Forms\Components\TextInput::make('dosage')
                             ->label('Dosage')
-                            ->numeric()
-                            ->minValue(0.01)
-                            ->maxValue(100)
-                            ->step(0.01)
-                            ->suffix('ml/L')
-                            ->helperText('Dosage per liter of drinking water'),
+                            ->maxLength(100)
+                            ->placeholder('e.g., 40gram, 5ml/L, 2 tablets')
+                            ->helperText('Enter dosage amount and unit'),
                         Forms\Components\TextInput::make('duration_days')
                             ->label('Duration')
                             ->numeric()
@@ -96,10 +93,8 @@ class HealthTreatmentResource extends Resource
                 Tables\Columns\TextColumn::make('reason')
                     ->limit(30)
                     ->toggleable(),
-                Tables\Columns\TextColumn::make('dosage_per_liter_ml')
+                Tables\Columns\TextColumn::make('dosage')
                     ->label('Dosage')
-                    ->numeric(decimalPlaces: 2)
-                    ->suffix(' ml/L')
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('duration_days')
                     ->label('Days')

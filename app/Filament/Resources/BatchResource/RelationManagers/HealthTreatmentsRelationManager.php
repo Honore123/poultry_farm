@@ -35,12 +35,10 @@ class HealthTreatmentsRelationManager extends RelationManager
                         'Electrolytes',
                         'Dewormer - Piperazine',
                     ]),
-                Forms\Components\TextInput::make('dosage_per_liter_ml')
-                    ->label('Dosage (ml/L)')
-                    ->numeric()
-                    ->minValue(0.01)
-                    ->maxValue(100)
-                    ->step(0.01),
+                Forms\Components\TextInput::make('dosage')
+                    ->label('Dosage')
+                    ->maxLength(100)
+                    ->placeholder('e.g., 40g, 5ml/L'),
                 Forms\Components\TextInput::make('duration_days')
                     ->label('Days')
                     ->numeric()
@@ -62,9 +60,8 @@ class HealthTreatmentsRelationManager extends RelationManager
                     ->sortable(),
                 Tables\Columns\TextColumn::make('product')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('dosage_per_liter_ml')
-                    ->label('ml/L')
-                    ->numeric(decimalPlaces: 2),
+                Tables\Columns\TextColumn::make('dosage')
+                    ->label('Dosage'),
                 Tables\Columns\TextColumn::make('duration_days')
                     ->label('Days'),
                 Tables\Columns\TextColumn::make('reason')

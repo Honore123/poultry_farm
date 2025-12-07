@@ -643,10 +643,33 @@ class DailyDataEntry extends Page implements HasForms
             $hasData = true;
         }
 
+        // Save additional treatments if provided
+        if (!empty($data['additional_treatments'])) {
+            $treatmentCount = $this->saveTreatments($data);
+            if ($treatmentCount > 0) {
+                $savedItems[] = "{$treatmentCount} treatment(s)";
+                $hasData = true;
+            }
+        }
+
+        // Save received stock if provided
+        if (!empty($data['received_lot_id']) && !empty($data['received_qty']) && $data['received_qty'] > 0) {
+            $this->recordReceivedStock($data);
+            $savedItems[] = 'received stock';
+            $hasData = true;
+        }
+
+        // Save feed disposal if provided
+        if (!empty($data['disposal_lot_id']) && !empty($data['disposal_qty']) && $data['disposal_qty'] > 0) {
+            $this->recordFeedDisposal($data);
+            $savedItems[] = 'feed out';
+            $hasData = true;
+        }
+
         if (!$hasData) {
             Notification::make()
                 ->title('No data to save')
-                ->body('Please enter at least one value (eggs, feed, water, or mortality)')
+                ->body('Please enter at least one value')
                 ->warning()
                 ->send();
             return;
@@ -661,13 +684,19 @@ class DailyDataEntry extends Page implements HasForms
             ->success()
             ->send();
 
-        // Clear only the feed and mortality entry fields (keep eggs/water as they can be viewed/updated)
+        // Clear entry fields after saving
         $this->data['kg_given'] = null;
         $this->data['inventory_lot_id'] = null;
         $this->data['feed_item_id'] = null;
         $this->data['available_stock'] = null;
         $this->data['mortality_count'] = null;
         $this->data['mortality_cause'] = null;
+        $this->data['received_lot_id'] = null;
+        $this->data['received_qty'] = null;
+        $this->data['received_reason'] = null;
+        $this->data['disposal_lot_id'] = null;
+        $this->data['disposal_qty'] = null;
+        $this->data['disposal_reason'] = null;
     }
 
     protected function saveEggs(array $data): void
@@ -775,6 +804,36 @@ class DailyDataEntry extends Page implements HasForms
         $this->mortalitySaved = true;
     }
 
+    protected function saveTreatments(array $data): int
+    {
+        $savedCount = 0;
+        $date = Carbon::parse($data['date']);
+        
+        if (!empty($data['additional_treatments'])) {
+            foreach ($data['additional_treatments'] as $treatmentData) {
+                if (!empty($treatmentData['product'])) {
+                    HealthTreatment::create([
+                        'batch_id' => $data['batch_id'],
+                        'date' => $date,
+                        'product' => $treatmentData['product'],
+                        'reason' => $treatmentData['reason'] ?? null,
+                        'dosage' => $treatmentData['dosage'] ?? null,
+                        'duration_days' => !empty($treatmentData['duration_days']) ? intval($treatmentData['duration_days']) : null,
+                    ]);
+                    
+                    $savedCount++;
+                }
+            }
+            
+            // Clear the treatments from the form after saving
+            if ($savedCount > 0) {
+                $this->data['additional_treatments'] = [];
+            }
+        }
+        
+        return $savedCount;
+    }
+
     protected function recordFeedDisposal(array $data): void
     {
         $lotId = $data['disposal_lot_id'];
@@ -871,21 +930,7 @@ class DailyDataEntry extends Page implements HasForms
             return;
         }
 
-        // Handle received stock if entered
-        if (!empty($data['received_lot_id']) && !empty($data['received_qty']) && $data['received_qty'] > 0) {
-            $this->recordReceivedStock($data);
-        }
-
-        // Handle feed disposal if entered
-        if (!empty($data['disposal_lot_id']) && !empty($data['disposal_qty']) && $data['disposal_qty'] > 0) {
-            $this->recordFeedDisposal($data);
-        }
-
         $date = Carbon::parse($data['date']);
-        
-        // Re-load inventory data after potential disposal
-        $this->loadInventoryData();
-        $data = $this->form->getState();
         
         // Calculate age in weeks
         $ageWeeks = $batch->placement_date->diffInWeeks($date);
@@ -930,54 +975,7 @@ class DailyDataEntry extends Page implements HasForms
             ->first();
         $avgWeight = $latestWeight ? round($latestWeight->avg_weight_g) : 'N/A';
         
-        // Get ongoing treatments
-        $treatments = HealthTreatment::where('batch_id', $batch->id)
-            ->whereDate('date', '<=', $date)
-            ->where(function ($query) use ($date) {
-                $query->whereRaw('DATE_ADD(date, INTERVAL COALESCE(duration_days, 0) DAY) >= ?', [$date->format('Y-m-d')])
-                    ->orWhereNull('duration_days');
-            })
-            ->get();
-        
-        // Save additional treatments from form to database
-        $savedTreatments = [];
-        if (!empty($data['additional_treatments'])) {
-            foreach ($data['additional_treatments'] as $treatmentData) {
-                if (!empty($treatmentData['product'])) {
-                    // Try to extract ml/L value if present for backward compatibility
-                    $dosageMl = null;
-                    if (!empty($treatmentData['dosage'])) {
-                        if (preg_match('/(\d+(?:\.\d+)?)\s*ml/i', $treatmentData['dosage'], $matches)) {
-                            $dosageMl = floatval($matches[1]);
-                        }
-                    }
-                    
-                    $savedTreatment = HealthTreatment::create([
-                        'batch_id' => $batch->id,
-                        'date' => $date,
-                        'product' => $treatmentData['product'],
-                        'reason' => $treatmentData['reason'] ?? null,
-                        'dosage' => $treatmentData['dosage'] ?? null,
-                        'dosage_per_liter_ml' => $dosageMl,
-                        'duration_days' => !empty($treatmentData['duration_days']) ? intval($treatmentData['duration_days']) : null,
-                    ]);
-                    
-                    $savedTreatments[] = $savedTreatment;
-                }
-            }
-            
-            if (count($savedTreatments) > 0) {
-                Notification::make()
-                    ->title('Treatments saved!')
-                    ->body(count($savedTreatments) . ' treatment(s) recorded to health records')
-                    ->success()
-                    ->send();
-                
-                $this->data['additional_treatments'] = [];
-            }
-        }
-        
-        // Refresh treatments list to include newly added ones
+        // Get ongoing treatments (already saved via Save All button)
         $treatments = HealthTreatment::where('batch_id', $batch->id)
             ->whereDate('date', '<=', $date)
             ->where(function ($query) use ($date) {
@@ -989,8 +987,9 @@ class DailyDataEntry extends Page implements HasForms
         // Build treatments text
         $treatmentsText = '';
         foreach ($treatments as $treatment) {
+            // Use dosage field, fallback to legacy dosage_per_liter_ml for old records
             $dosageText = $treatment->dosage 
-                ?? ($treatment->dosage_per_liter_ml ? "{$treatment->dosage_per_liter_ml}ml/L" : '')
+                ?: ($treatment->dosage_per_liter_ml ? "{$treatment->dosage_per_liter_ml}ml/L" : '')
                 ?: ($treatment->reason ?? '');
             $treatmentsText .= "\n-{$treatment->product}" . ($dosageText ? ":{$dosageText}" : '');
         }

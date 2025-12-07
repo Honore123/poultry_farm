@@ -19,7 +19,6 @@ class HealthTreatment extends Model
 
     protected $casts = [
         'date' => 'date',
-        'dosage_per_liter_ml' => 'decimal:2',
     ];
 
     public function batch(): BelongsTo
