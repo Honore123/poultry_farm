@@ -299,8 +299,14 @@
             const gridColor = isDark ? '#374151' : '#E5E7EB';
 
             // Laying Rate Chart with Target
-            @php $layingData = $this->getLayingRateData(); @endphp
-            @if(count($layingData['labels']) > 0)
+            @php 
+                try {
+                    $layingData = $this->getLayingRateData(); 
+                } catch (\Exception $e) {
+                    $layingData = ['labels' => [], 'data' => [], 'target' => []];
+                }
+            @endphp
+            @if(count($layingData['labels'] ?? []) > 0)
             if (document.getElementById('layingRateChart')) {
             chartInstances.layingRate = new Chart(document.getElementById('layingRateChart'), {
                 type: 'line',
@@ -345,8 +351,14 @@
             @endif
 
             // Feed Consumption Chart with Target
-            @php $feedData = $this->getFeedConsumptionData(); @endphp
-            @if(count($feedData['labels']) > 0)
+            @php 
+                try {
+                    $feedData = $this->getFeedConsumptionData(); 
+                } catch (\Exception $e) {
+                    $feedData = ['labels' => [], 'data' => [], 'target' => []];
+                }
+            @endphp
+            @if(count($feedData['labels'] ?? []) > 0)
             if (document.getElementById('feedConsumptionChart')) {
             chartInstances.feedConsumption = new Chart(document.getElementById('feedConsumptionChart'), {
                 type: 'bar',
@@ -389,8 +401,14 @@
             @endif
 
             // Egg Production Chart with Target
-            @php $eggData = $this->getEggProductionData(); @endphp
-            @if(count($eggData['labels']) > 0)
+            @php 
+                try {
+                    $eggData = $this->getEggProductionData(); 
+                } catch (\Exception $e) {
+                    $eggData = ['labels' => [], 'total' => [], 'good' => [], 'cracked' => [], 'dirty' => [], 'soft' => [], 'target' => []];
+                }
+            @endphp
+            @if(count($eggData['labels'] ?? []) > 0)
             if (document.getElementById('eggProductionChart')) {
             chartInstances.eggProduction = new Chart(document.getElementById('eggProductionChart'), {
                 type: 'bar',
@@ -428,8 +446,14 @@
             @endif
 
             // Feed per Egg Chart
-            @php $feedEggData = $this->getFeedPerEggData(); @endphp
-            @if(count($feedEggData['labels']) > 0)
+            @php 
+                try {
+                    $feedEggData = $this->getFeedPerEggData(); 
+                } catch (\Exception $e) {
+                    $feedEggData = ['labels' => [], 'data' => []];
+                }
+            @endphp
+            @if(count($feedEggData['labels'] ?? []) > 0)
             if (document.getElementById('feedPerEggChart')) {
             chartInstances.feedPerEgg = new Chart(document.getElementById('feedPerEggChart'), {
                 type: 'line',
@@ -462,8 +486,14 @@
             @endif
 
             // Mortality Chart
-            @php $mortalityData = $this->getMortalityData(); @endphp
-            @if(count($mortalityData['labels']) > 0)
+            @php 
+                try {
+                    $mortalityData = $this->getMortalityData(); 
+                } catch (\Exception $e) {
+                    $mortalityData = ['labels' => [], 'daily' => [], 'cumulative' => [], 'expected_mortality' => []];
+                }
+            @endphp
+            @if(count($mortalityData['labels'] ?? []) > 0)
             if (document.getElementById('mortalityChart')) {
             chartInstances.mortality = new Chart(document.getElementById('mortalityChart'), {
                 type: 'bar',
