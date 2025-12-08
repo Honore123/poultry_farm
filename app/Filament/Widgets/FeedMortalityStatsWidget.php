@@ -100,7 +100,7 @@ class FeedMortalityStatsWidget extends BaseWidget
         $batchesWithFeed = 0;
 
         foreach ($activeBatches as $batch) {
-            $week = $batch->placement_date->diffInWeeks(now());
+            $week = (int) $batch->placement_date->diffInWeeks(now());
             $birdsAlive = $batch->placement_qty - MortalityLog::where('batch_id', $batch->id)->sum('count');
             
             if ($birdsAlive <= 0) continue;
@@ -162,7 +162,7 @@ class FeedMortalityStatsWidget extends BaseWidget
         $weightedTarget = 0;
 
         foreach ($activeBatches as $batch) {
-            $week = $batch->placement_date->diffInWeeks(now());
+            $week = (int) $batch->placement_date->diffInWeeks(now());
             $birdsPlaced = $batch->placement_qty;
             
             if ($week >= 18) {

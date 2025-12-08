@@ -47,7 +47,7 @@ class BatchDashboard extends Page
      */
     public function getAgeInWeeks(): int
     {
-        return $this->record->placement_date->diffInWeeks(now());
+        return (int) $this->record->placement_date->diffInWeeks(now());
     }
 
     /**
@@ -141,7 +141,7 @@ class BatchDashboard extends Page
 
         for ($i = 0; $i <= 30; $i++) {
             $date = $startDate->copy()->addDays($i);
-            $week = $this->record->placement_date->diffInWeeks($date);
+            $week = (int) $this->record->placement_date->diffInWeeks($date);
             $ageDays = $this->record->placement_date->diffInDays($date);
 
             $feedTarget = null;
@@ -189,7 +189,7 @@ class BatchDashboard extends Page
             // Get production targets for each date
             $targetData = [];
             foreach ($data as $row) {
-                $week = $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
+                $week = (int) $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
                 $target = ProductionTarget::where('week', $week)->first();
                 $targetData[] = $target?->hen_day_production_pct ?? null;
             }
@@ -242,7 +242,7 @@ class BatchDashboard extends Page
             // Calculate expected livability targets
             $livabilityTargets = [];
             foreach ($data as $row) {
-                $week = $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
+                $week = (int) $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
                 $target = ProductionTarget::where('week', $week)->first();
                 // Convert livability % to expected mortality count
                 if ($target && $target->livability_pct) {
@@ -276,7 +276,7 @@ class BatchDashboard extends Page
             $birdsAlive = $this->getBirdsAlive();
             $targetData = [];
             foreach ($data as $row) {
-                $week = $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
+                $week = (int) $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
                 $target = ProductionTarget::where('week', $week)->first();
                 if ($target && $target->hen_day_production_pct) {
                     $expectedEggs = round($birdsAlive * $target->hen_day_production_pct / 100);
@@ -314,7 +314,7 @@ class BatchDashboard extends Page
             $birdsAlive = $this->getBirdsAlive();
             $targetData = [];
             foreach ($data as $row) {
-                $week = $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
+                $week = (int) $this->record->placement_date->diffInWeeks(\Carbon\Carbon::parse($row->date));
                 
                 if ($week < 18) {
                     $target = RearingTarget::where('week', $week)->first();

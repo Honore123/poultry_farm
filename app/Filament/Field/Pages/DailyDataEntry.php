@@ -933,7 +933,7 @@ class DailyDataEntry extends Page implements HasForms
         $date = Carbon::parse($data['date']);
         
         // Calculate age in weeks
-        $ageWeeks = $batch->placement_date->diffInWeeks($date);
+        $ageWeeks = (int) $batch->placement_date->diffInWeeks($date);
         
         // Get mortality for the day
         $mortalityToday = MortalityLog::where('batch_id', $batch->id)

@@ -45,14 +45,37 @@ class FeedIntakeTargetResource extends Resource
                             ->required()
                             ->minValue(0)
                             ->label('Min g/bird/day')
-                            ->suffix('g'),
+                            ->suffix('g')
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(fn (Forms\Set $set, $state) => 
+                                $set('min_kg_per_week_display', $state ? round($state * 7 / 1000, 3) : null)
+                            ),
                         Forms\Components\TextInput::make('grams_per_bird_per_day_max')
                             ->numeric()
                             ->required()
                             ->minValue(0)
                             ->label('Max g/bird/day')
-                            ->suffix('g'),
+                            ->suffix('g')
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(fn (Forms\Set $set, $state) => 
+                                $set('max_kg_per_week_display', $state ? round($state * 7 / 1000, 3) : null)
+                            ),
                     ])->columns(2),
+                Forms\Components\Section::make('Weekly Projection (per bird)')
+                    ->description('Calculated based on daily intake × 7 days')
+                    ->schema([
+                        Forms\Components\Placeholder::make('min_kg_per_week_display')
+                            ->label('Min kg/bird/week')
+                            ->content(fn ($record) => $record 
+                                ? number_format($record->grams_per_bird_per_day_min * 7 / 1000, 3) . ' kg'
+                                : 'Enter min g/bird/day to calculate'),
+                        Forms\Components\Placeholder::make('max_kg_per_week_display')
+                            ->label('Max kg/bird/week')
+                            ->content(fn ($record) => $record 
+                                ? number_format($record->grams_per_bird_per_day_max * 7 / 1000, 3) . ' kg'
+                                : 'Enter max g/bird/day to calculate'),
+                    ])->columns(2)
+                    ->collapsible(),
             ]);
     }
 
@@ -79,6 +102,18 @@ class FeedIntakeTargetResource extends Resource
                     ->label('Max g/bird/day')
                     ->numeric()
                     ->suffix(' g'),
+                Tables\Columns\TextColumn::make('min_kg_per_week')
+                    ->label('Min kg/bird/week')
+                    ->state(fn ($record) => round($record->grams_per_bird_per_day_min * 7 / 1000, 3))
+                    ->numeric(decimalPlaces: 3)
+                    ->suffix(' kg')
+                    ->color('info'),
+                Tables\Columns\TextColumn::make('max_kg_per_week')
+                    ->label('Max kg/bird/week')
+                    ->state(fn ($record) => round($record->grams_per_bird_per_day_max * 7 / 1000, 3))
+                    ->numeric(decimalPlaces: 3)
+                    ->suffix(' kg')
+                    ->color('info'),
             ])
             ->filters([
                 //

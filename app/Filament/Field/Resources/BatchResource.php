@@ -53,7 +53,7 @@ class BatchResource extends Resource
                     ->numeric(),
                 Tables\Columns\TextColumn::make('age')
                     ->label('Age')
-                    ->getStateUsing(fn (Batch $record) => $record->placement_date->diffInWeeks(now()) . ' weeks'),
+                    ->getStateUsing(fn (Batch $record) => (int) $record->placement_date->diffInWeeks(now()) . ' weeks'),
             ])
             ->filters([
                 //

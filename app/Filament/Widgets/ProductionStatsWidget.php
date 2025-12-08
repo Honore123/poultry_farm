@@ -88,7 +88,7 @@ class ProductionStatsWidget extends BaseWidget
         $weightedTarget = 0;
 
         foreach ($activeBatches as $batch) {
-            $week = $batch->placement_date->diffInWeeks(now());
+            $week = (int) $batch->placement_date->diffInWeeks(now());
             $birdsAlive = $batch->placement_qty - MortalityLog::where('batch_id', $batch->id)->sum('count');
             
             if ($week >= 18) {

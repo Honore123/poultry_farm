@@ -121,7 +121,7 @@ class CheckDailyEntriesCommand extends Command
         $result = ['upcoming' => [], 'overdue' => []];
         
         // Calculate batch age in weeks
-        $ageInWeeks = $batch->placement_date->diffInWeeks(now());
+        $ageInWeeks = (int) $batch->placement_date->diffInWeeks(now());
         $ageInDays = $batch->placement_date->diffInDays(now());
 
         // Standard vaccination schedule for layers (customize as needed)
