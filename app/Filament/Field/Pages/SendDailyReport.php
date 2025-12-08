@@ -445,7 +445,7 @@ class SendDailyReport extends Page implements HasForms
                     'ts' => $date,
                     'direction' => 'out',
                     'qty' => $qty,
-                    'reference' => 'disposed',
+                    'reference' => $reason,
                 ]);
                 
                 Notification::make()
