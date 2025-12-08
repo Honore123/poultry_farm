@@ -3,12 +3,14 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\InventoryMovementResource\Pages;
+use App\Models\InventoryLot;
 use App\Models\InventoryMovement;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\DB;
 
 class InventoryMovementResource extends Resource
 {
@@ -96,10 +98,42 @@ class InventoryMovementResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (InventoryMovement $record) {
+                        // Reverse the movement effect before deleting
+                        DB::transaction(function () use ($record) {
+                            $lot = InventoryLot::lockForUpdate()->find($record->lot_id);
+                            
+                            if ($lot) {
+                                if ($record->direction === 'in') {
+                                    $lot->qty_on_hand -= $record->qty;
+                                } else {
+                                    $lot->qty_on_hand += $record->qty;
+                                }
+                                $lot->save();
+                            }
+                        });
+                    }),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->before(function ($records) {
+                        // Reverse all movement effects before bulk deleting
+                        DB::transaction(function () use ($records) {
+                            foreach ($records as $record) {
+                                $lot = InventoryLot::lockForUpdate()->find($record->lot_id);
+                                
+                                if ($lot) {
+                                    if ($record->direction === 'in') {
+                                        $lot->qty_on_hand -= $record->qty;
+                                    } else {
+                                        $lot->qty_on_hand += $record->qty;
+                                    }
+                                    $lot->save();
+                                }
+                            }
+                        });
+                    }),
             ])
             ->defaultSort('ts', 'desc');
     }
