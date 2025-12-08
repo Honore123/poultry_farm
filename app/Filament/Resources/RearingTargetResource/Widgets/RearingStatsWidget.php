@@ -3,8 +3,10 @@
 namespace App\Filament\Resources\RearingTargetResource\Widgets;
 
 use App\Models\Batch;
+use App\Models\DailyFeedIntake;
 use App\Models\MortalityLog;
 use App\Models\RearingTarget;
+use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Livewire\Attributes\On;
@@ -28,12 +30,16 @@ class RearingStatsWidget extends BaseWidget
                     ->icon('heroicon-o-information-circle')
                     ->color('gray'),
                 Stat::make('Min kg/week', '-')
-                    ->description('Flock total')
+                    ->description('Flock total target')
                     ->icon('heroicon-o-arrow-trending-down')
                     ->color('gray'),
                 Stat::make('Max kg/week', '-')
-                    ->description('Flock total')
+                    ->description('Flock total target')
                     ->icon('heroicon-o-arrow-trending-up')
+                    ->color('gray'),
+                Stat::make('Feed Consumed', '-')
+                    ->description('This week')
+                    ->icon('heroicon-o-scale')
                     ->color('gray'),
             ];
         }
@@ -49,6 +55,15 @@ class RearingStatsWidget extends BaseWidget
         // Get birds alive
         $totalMortality = MortalityLog::where('batch_id', $this->selectedBatchId)->sum('count');
         $birdsAlive = $batch->placement_qty - $totalMortality;
+
+        // Calculate week start and end dates
+        $weekStartDate = $batch->placement_date->copy()->addWeeks($currentWeek);
+        $weekEndDate = $weekStartDate->copy()->addDays(6);
+
+        // Get feed consumed this week
+        $feedConsumedThisWeek = DailyFeedIntake::where('batch_id', $this->selectedBatchId)
+            ->whereBetween('date', [$weekStartDate->format('Y-m-d'), $weekEndDate->format('Y-m-d')])
+            ->sum('kg_given');
 
         // Get target for current week
         $target = RearingTarget::where('week', $currentWeek)->first();
@@ -67,12 +82,28 @@ class RearingStatsWidget extends BaseWidget
                     ->description($currentWeek > 18 ? 'Use Production Targets' : 'Add rearing target for this week')
                     ->icon('heroicon-o-arrow-trending-up')
                     ->color('warning'),
+                Stat::make('Feed Consumed', number_format($feedConsumedThisWeek, 1) . ' kg')
+                    ->description("Week {$currentWeek}: {$weekStartDate->format('M d')} - {$weekEndDate->format('M d')}")
+                    ->icon('heroicon-o-scale')
+                    ->color('primary'),
             ];
         }
 
         // Calculate flock totals
         $minKgWeek = $target->daily_feed_min_g * 7 * $birdsAlive / 1000;
         $maxKgWeek = $target->daily_feed_max_g * 7 * $birdsAlive / 1000;
+
+        // Determine consumption status color
+        $consumptionColor = 'primary';
+        if ($feedConsumedThisWeek > 0) {
+            if ($feedConsumedThisWeek >= $minKgWeek && $feedConsumedThisWeek <= $maxKgWeek) {
+                $consumptionColor = 'success';
+            } elseif ($feedConsumedThisWeek < $minKgWeek) {
+                $consumptionColor = 'warning';
+            } else {
+                $consumptionColor = 'danger';
+            }
+        }
 
         return [
             Stat::make('Current Week', "Week {$currentWeek}")
@@ -86,7 +117,11 @@ class RearingStatsWidget extends BaseWidget
             Stat::make('Max kg/week', number_format($maxKgWeek, 1) . ' kg')
                 ->description("Target: {$target->daily_feed_max_g}g/bird/day × 7 days")
                 ->icon('heroicon-o-arrow-trending-up')
-                ->color('success'),
+                ->color('info'),
+            Stat::make('Feed Consumed', number_format($feedConsumedThisWeek, 1) . ' kg')
+                ->description("Week {$currentWeek}: {$weekStartDate->format('M d')} - {$weekEndDate->format('M d')}")
+                ->icon('heroicon-o-scale')
+                ->color($consumptionColor),
         ];
     }
 
@@ -98,6 +133,8 @@ class RearingStatsWidget extends BaseWidget
             Stat::make('Min kg/week', '-')
                 ->color('gray'),
             Stat::make('Max kg/week', '-')
+                ->color('gray'),
+            Stat::make('Feed Consumed', '-')
                 ->color('gray'),
         ];
     }
