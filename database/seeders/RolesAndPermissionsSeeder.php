@@ -42,6 +42,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_sales_orders', 'create_sales_orders', 'edit_sales_orders', 'delete_sales_orders',
             'view_expenses', 'create_expenses', 'edit_expenses', 'delete_expenses',
 
+            // Payroll (admin only for management, users can view own)
+            'view_employee_salaries', 'create_employee_salaries', 'edit_employee_salaries', 'delete_employee_salaries',
+            'view_salary_payments', 'create_salary_payments', 'edit_salary_payments', 'delete_salary_payments',
+
             // Settings
             'view_feed_intake_targets', 'create_feed_intake_targets', 'edit_feed_intake_targets', 'delete_feed_intake_targets',
 

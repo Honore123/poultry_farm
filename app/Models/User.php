@@ -22,6 +22,22 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Get the employee salary record for this user
+     */
+    public function employeeSalary(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(EmployeeSalary::class);
+    }
+
+    /**
+     * Get all salary payments for this user through their employee salary
+     */
+    public function salaryPayments(): \Illuminate\Database\Eloquent\Relations\HasManyThrough
+    {
+        return $this->hasManyThrough(SalaryPayment::class, EmployeeSalary::class);
+    }
+
+    /**
      * Send the password reset notification.
      */
     public function sendPasswordResetNotification($token): void

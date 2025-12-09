@@ -9,6 +9,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ExpenseResource extends Resource
 {
@@ -30,16 +31,7 @@ class ExpenseResource extends Resource
                             ->required()
                             ->default(now()),
                         Forms\Components\Select::make('category')
-                            ->options([
-                                'feed' => 'Feed',
-                                'labor' => 'Labor',
-                                'utilities' => 'Utilities',
-                                'veterinary' => 'Veterinary',
-                                'maintenance' => 'Maintenance',
-                                'transport' => 'Transport',
-                                'packaging' => 'Packaging',
-                                'other' => 'Other',
-                            ])
+                            ->options(Expense::CATEGORIES)
                             ->searchable(),
                         Forms\Components\TextInput::make('amount')
                             ->numeric()
@@ -98,18 +90,15 @@ class ExpenseResource extends Resource
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('category')
-                    ->options([
-                        'feed' => 'Feed',
-                        'labor' => 'Labor',
-                        'utilities' => 'Utilities',
-                        'veterinary' => 'Veterinary',
-                        'maintenance' => 'Maintenance',
-                        'transport' => 'Transport',
-                        'packaging' => 'Packaging',
-                        'other' => 'Other',
-                    ]),
+                    ->options(Expense::CATEGORIES),
                 Tables\Filters\SelectFilter::make('farm')
                     ->relationship('farm', 'name'),
+                Tables\Filters\TernaryFilter::make('is_salary')
+                    ->label('Salary Expenses')
+                    ->queries(
+                        true: fn (Builder $query) => $query->where('category', 'salary'),
+                        false: fn (Builder $query) => $query->where('category', '!=', 'salary'),
+                    ),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

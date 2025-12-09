@@ -2,9 +2,17 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Batch;
+use App\Models\DailyFeedIntake;
+use App\Models\DailyProduction;
+use App\Models\EmployeeSalary;
 use App\Models\Expense;
+use App\Models\MortalityLog;
+use App\Models\ProductionTarget;
+use App\Models\RearingTarget;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
+use App\Models\SalaryPayment;
 use Carbon\Carbon;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Section;
@@ -17,6 +25,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class FinancialDashboard extends Page implements HasForms
@@ -36,11 +45,20 @@ class FinancialDashboard extends Page implements HasForms
     public ?string $period = 'month';
     public ?string $startDate = null;
     public ?string $endDate = null;
+    
+    // Expense projection properties
+    public ?string $projectionMonth = null;
+
+    public static function canAccess(): bool
+    {
+        return Auth::user()?->hasRole('admin') ?? false;
+    }
 
     public function mount(): void
     {
         $this->startDate = now()->startOfMonth()->format('Y-m-d');
         $this->endDate = now()->format('Y-m-d');
+        $this->projectionMonth = now()->format('Y-m');
     }
 
     public function form(Form $form): Form
@@ -77,6 +95,339 @@ class FinancialDashboard extends Page implements HasForms
                     ])
                     ->columns(3),
             ]);
+    }
+
+    protected function getProjectionFormSchema(): array
+    {
+        // Generate month options for the last 12 months and next 6 months
+        $months = [];
+        $start = now()->subMonths(12);
+        $end = now()->addMonths(6);
+        
+        while ($start <= $end) {
+            $months[$start->format('Y-m')] = $start->format('F Y');
+            $start->addMonth();
+        }
+
+        return [
+            Select::make('projectionMonth')
+                ->label('Select Month')
+                ->options($months)
+                ->default(now()->format('Y-m'))
+                ->live()
+                ->afterStateUpdated(fn () => $this->dispatch('$refresh')),
+        ];
+    }
+
+    public function getExpenseProjection(): array
+    {
+        $selectedMonth = Carbon::parse($this->projectionMonth . '-01');
+        $startOfMonth = $selectedMonth->copy()->startOfMonth();
+        $endOfMonth = $selectedMonth->copy()->endOfMonth();
+        $isCurrentOrFuture = $selectedMonth->format('Y-m') >= now()->format('Y-m');
+
+        // Get actual expenses for the selected month
+        $actualExpenses = Expense::whereBetween('date', [$startOfMonth, $endOfMonth])
+            ->selectRaw('category, SUM(amount) as total')
+            ->groupBy('category')
+            ->get()
+            ->keyBy('category');
+
+        // Calculate salary projections for future months
+        $salaryProjection = 0;
+        $actualSalaryExpense = $actualExpenses->get('salary')?->total ?? 0;
+
+        if ($isCurrentOrFuture) {
+            // For current/future months, project based on active employee salaries
+            $activeEmployees = EmployeeSalary::where('status', 'active')
+                ->where('start_date', '<=', $endOfMonth)
+                ->where(function ($query) use ($startOfMonth) {
+                    $query->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $startOfMonth);
+                })
+                ->get();
+
+            $salaryProjection = $activeEmployees->sum('salary_amount');
+        }
+
+        // Actual paid salaries for this month
+        $paidSalaries = SalaryPayment::whereHas('employeeSalary')
+            ->where('status', 'paid')
+            ->whereBetween('payment_date', [$startOfMonth, $endOfMonth])
+            ->sum('net_amount');
+
+        // Get actual feed expenses
+        $actualFeedExpense = $actualExpenses->get('feed')?->total ?? 0;
+
+        // Calculate projected feed expense based on targets
+        $feedProjection = $this->calculateFeedProjection($startOfMonth, $endOfMonth);
+        
+        // Use projected feed for current/future months, actual for past
+        $feedExpense = $isCurrentOrFuture ? $feedProjection['projectedCost'] : $actualFeedExpense;
+
+        // Get other expenses (excluding salary and feed)
+        $otherExpenses = $actualExpenses->filter(function ($item, $category) {
+            return !in_array($category, ['salary', 'feed']);
+        })->sum('total');
+
+        // Calculate totals
+        $totalActual = $actualExpenses->sum('total');
+        $totalProjected = $salaryProjection + $feedExpense + $otherExpenses;
+
+        // Get breakdown of other expenses
+        $otherExpensesBreakdown = $actualExpenses->filter(function ($item, $category) {
+            return !in_array($category, ['salary', 'feed']);
+        })->map(fn ($item) => $item->total)->toArray();
+
+        // Get active employees for projection details
+        $employeeDetails = [];
+        if ($isCurrentOrFuture) {
+            $employeeDetails = EmployeeSalary::where('status', 'active')
+                ->where('start_date', '<=', $endOfMonth)
+                ->where(function ($query) use ($startOfMonth) {
+                    $query->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $startOfMonth);
+                })
+                ->select('employee_name', 'position', 'salary_amount')
+                ->get()
+                ->toArray();
+        }
+
+        // Calculate income projection based on production targets
+        $incomeProjection = $this->calculateIncomeProjection($startOfMonth, $endOfMonth);
+        
+        // Get actual revenue for the month
+        $actualRevenue = SalesOrderItem::whereHas('salesOrder', function ($q) use ($startOfMonth, $endOfMonth) {
+            $q->whereBetween('order_date', [$startOfMonth, $endOfMonth])
+              ->where('status', 'delivered');
+        })->selectRaw('SUM(qty * unit_price) as total')->value('total') ?? 0;
+
+        // Use projected income for current/future months, actual for past
+        $projectedIncome = $isCurrentOrFuture ? $incomeProjection['projectedIncome'] : $actualRevenue;
+
+        return [
+            'selectedMonth' => $selectedMonth->format('F Y'),
+            'isCurrentOrFuture' => $isCurrentOrFuture,
+            'salaryProjection' => $salaryProjection,
+            'actualSalaryExpense' => $actualSalaryExpense,
+            'paidSalaries' => $paidSalaries,
+            'feedExpense' => $feedExpense,
+            'actualFeedExpense' => $actualFeedExpense,
+            'feedProjection' => $feedProjection,
+            'incomeProjection' => $incomeProjection,
+            'actualRevenue' => $actualRevenue,
+            'projectedIncome' => $projectedIncome,
+            'otherExpenses' => $otherExpenses,
+            'otherExpensesBreakdown' => $otherExpensesBreakdown,
+            'totalActual' => $totalActual,
+            'totalProjected' => $totalProjected,
+            'employeeCount' => count($employeeDetails),
+            'employeeDetails' => $employeeDetails,
+        ];
+    }
+
+    /**
+     * Calculate projected feed expense based on rearing and production targets
+     */
+    protected function calculateFeedProjection(Carbon $startOfMonth, Carbon $endOfMonth): array
+    {
+        $daysInMonth = $startOfMonth->daysInMonth;
+        $totalProjectedKg = 0;
+        $batchDetails = [];
+
+        // Get active batches
+        $activeBatches = Batch::whereIn('status', ['brooding', 'growing', 'laying'])
+            ->where('placement_date', '<=', $endOfMonth)
+            ->get();
+
+        foreach ($activeBatches as $batch) {
+            // Calculate batch age at start of month (in weeks)
+            $ageAtStartDays = $batch->placement_date->diffInDays($startOfMonth);
+            $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
+            
+            // Get total mortality up to start of month
+            $mortalityBeforeMonth = MortalityLog::where('batch_id', $batch->id)
+                ->where('date', '<', $startOfMonth)
+                ->sum('count');
+            
+            // Get mortality during the month
+            $mortalityDuringMonth = MortalityLog::where('batch_id', $batch->id)
+                ->whereBetween('date', [$startOfMonth, $endOfMonth])
+                ->sum('count');
+            
+            // Current bird count (approximate - use start of month count)
+            $currentBirds = max(0, $batch->placement_qty - $mortalityBeforeMonth);
+            
+            // Average birds for the month (accounting for mortality)
+            $avgBirds = max(0, $currentBirds - ($mortalityDuringMonth / 2));
+            
+            // Get feed target based on batch status
+            $dailyFeedPerBirdG = 0;
+            $targetSource = '';
+            
+            if (in_array($batch->status, ['brooding', 'growing'])) {
+                // Use rearing targets
+                $rearingTarget = RearingTarget::where('week', '<=', $ageAtStartWeeks)
+                    ->orderBy('week', 'desc')
+                    ->first();
+                
+                if ($rearingTarget) {
+                    $dailyFeedPerBirdG = ($rearingTarget->daily_feed_min_g + $rearingTarget->daily_feed_max_g) / 2;
+                    $targetSource = 'Rearing (Week ' . $rearingTarget->week . ')';
+                }
+            } else {
+                // Use production targets for laying batches
+                $productionTarget = ProductionTarget::where('week', '<=', $ageAtStartWeeks)
+                    ->orderBy('week', 'desc')
+                    ->first();
+                
+                if ($productionTarget) {
+                    $dailyFeedPerBirdG = $productionTarget->feed_intake_per_day_g;
+                    $targetSource = 'Production (Week ' . $productionTarget->week . ')';
+                }
+            }
+            
+            // Calculate monthly feed in kg
+            $monthlyFeedKg = ($dailyFeedPerBirdG * $avgBirds * $daysInMonth) / 1000;
+            $totalProjectedKg += $monthlyFeedKg;
+            
+            $batchDetails[] = [
+                'batch_code' => $batch->code,
+                'status' => $batch->status,
+                'age_weeks' => $ageAtStartWeeks,
+                'bird_count' => round($avgBirds),
+                'daily_feed_g' => round($dailyFeedPerBirdG, 1),
+                'monthly_feed_kg' => round($monthlyFeedKg, 2),
+                'target_source' => $targetSource,
+            ];
+        }
+
+        // Calculate average feed price from historical data (last 3 months)
+        $threeMonthsAgo = now()->subMonths(3);
+        $historicalFeedExpense = Expense::where('category', 'feed')
+            ->where('date', '>=', $threeMonthsAgo)
+            ->sum('amount');
+        
+        $historicalFeedKg = DailyFeedIntake::where('date', '>=', $threeMonthsAgo)
+            ->sum('kg_given');
+        
+        // Default price per kg if no historical data (use a reasonable default)
+        $avgPricePerKg = $historicalFeedKg > 0 
+            ? $historicalFeedExpense / $historicalFeedKg 
+            : 450; // Default ~450 RWF per kg if no data
+        
+        $projectedCost = $totalProjectedKg * $avgPricePerKg;
+
+        return [
+            'totalProjectedKg' => round($totalProjectedKg, 2),
+            'avgPricePerKg' => round($avgPricePerKg, 2),
+            'projectedCost' => round($projectedCost, 2),
+            'batchCount' => count($activeBatches),
+            'batchDetails' => $batchDetails,
+            'historicalFeedKg' => round($historicalFeedKg, 2),
+            'historicalFeedExpense' => round($historicalFeedExpense, 2),
+        ];
+    }
+
+    /**
+     * Calculate projected income based on production targets (egg production)
+     */
+    protected function calculateIncomeProjection(Carbon $startOfMonth, Carbon $endOfMonth): array
+    {
+        $daysInMonth = $startOfMonth->daysInMonth;
+        $totalProjectedEggs = 0;
+        $batchDetails = [];
+
+        // Get laying batches only (production phase)
+        $layingBatches = Batch::where('status', 'laying')
+            ->where('placement_date', '<=', $endOfMonth)
+            ->get();
+
+        foreach ($layingBatches as $batch) {
+            // Calculate batch age at start of month (in weeks)
+            $ageAtStartDays = $batch->placement_date->diffInDays($startOfMonth);
+            $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
+            
+            // Get total mortality up to start of month
+            $mortalityBeforeMonth = MortalityLog::where('batch_id', $batch->id)
+                ->where('date', '<', $startOfMonth)
+                ->sum('count');
+            
+            // Get mortality during the month
+            $mortalityDuringMonth = MortalityLog::where('batch_id', $batch->id)
+                ->whereBetween('date', [$startOfMonth, $endOfMonth])
+                ->sum('count');
+            
+            // Current bird count (hens)
+            $currentHens = max(0, $batch->placement_qty - $mortalityBeforeMonth);
+            
+            // Average hens for the month (accounting for mortality)
+            $avgHens = max(0, $currentHens - ($mortalityDuringMonth / 2));
+            
+            // Get production target based on batch age
+            $productionTarget = ProductionTarget::where('week', '<=', $ageAtStartWeeks)
+                ->orderBy('week', 'desc')
+                ->first();
+            
+            $henDayPct = 0;
+            $targetSource = '';
+            
+            if ($productionTarget) {
+                $henDayPct = $productionTarget->hen_day_production_pct;
+                $targetSource = 'Week ' . $productionTarget->week . ' (' . $henDayPct . '%)';
+            }
+            
+            // Calculate monthly egg production
+            // eggs = hens × days × (production % / 100)
+            $monthlyEggs = round($avgHens * $daysInMonth * ($henDayPct / 100));
+            $totalProjectedEggs += $monthlyEggs;
+            
+            $batchDetails[] = [
+                'batch_code' => $batch->code,
+                'age_weeks' => $ageAtStartWeeks,
+                'hen_count' => round($avgHens),
+                'production_pct' => $henDayPct,
+                'monthly_eggs' => $monthlyEggs,
+                'target_source' => $targetSource,
+            ];
+        }
+
+        // Calculate average egg price from historical sales data (last 3 months)
+        $threeMonthsAgo = now()->subMonths(3);
+        
+        // Get egg-related sales (products containing 'egg' in name)
+        $historicalEggSales = SalesOrderItem::whereHas('salesOrder', function ($q) use ($threeMonthsAgo) {
+            $q->where('order_date', '>=', $threeMonthsAgo)
+              ->where('status', 'delivered');
+        })
+            ->where('product', 'like', '%egg%')
+            ->selectRaw('SUM(qty * unit_price) as total_revenue, SUM(qty) as total_qty')
+            ->first();
+        
+        $historicalRevenue = $historicalEggSales->total_revenue ?? 0;
+        $historicalQty = $historicalEggSales->total_qty ?? 0;
+        
+        // Also check actual egg production for reference
+        $historicalEggProduction = DailyProduction::where('date', '>=', $threeMonthsAgo)
+            ->sum('eggs_total');
+        
+        // Default price per egg if no historical data (150 RWF per egg)
+        $avgPricePerEgg = $historicalQty > 0 
+            ? $historicalRevenue / $historicalQty 
+            : 150; // Default 150 RWF per egg if no data
+        
+        $projectedIncome = $totalProjectedEggs * $avgPricePerEgg;
+
+        return [
+            'totalProjectedEggs' => $totalProjectedEggs,
+            'avgPricePerEgg' => round($avgPricePerEgg, 2),
+            'projectedIncome' => round($projectedIncome, 2),
+            'batchCount' => count($layingBatches),
+            'batchDetails' => $batchDetails,
+            'historicalEggProduction' => $historicalEggProduction,
+            'historicalRevenue' => round($historicalRevenue, 2),
+            'historicalQty' => $historicalQty,
+        ];
     }
 
     public function updateDateRange(string $period): void
@@ -239,6 +590,8 @@ class FinancialDashboard extends Page implements HasForms
     {
         return [
             'data' => $this->getFinancialData(),
+            'projection' => $this->getExpenseProjection(),
+            'projectionFormSchema' => $this->getProjectionFormSchema(),
         ];
     }
 }
