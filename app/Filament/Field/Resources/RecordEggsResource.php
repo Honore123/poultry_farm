@@ -82,7 +82,13 @@ class RecordEggsResource extends Resource
                                     ->default(0)
                                     ->minValue(0)
                                     ->lte('eggs_total'),
-                            ])->columns(3),
+                                Forms\Components\TextInput::make('eggs_small')
+                                    ->label('Small')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->minValue(0)
+                                    ->lte('eggs_total'),
+                            ])->columns(4),
                     ]),
             ]);
     }
@@ -111,6 +117,8 @@ class RecordEggsResource extends Resource
                     ->label('Dirty'),
                 Tables\Columns\TextColumn::make('eggs_soft')
                     ->label('Soft'),
+                Tables\Columns\TextColumn::make('eggs_small')
+                    ->label('Small'),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('batch')

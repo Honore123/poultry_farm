@@ -77,6 +77,16 @@ class DailyProductionResource extends Resource
                             ->validationMessages([
                                 'lte' => 'Soft shell eggs cannot exceed total eggs',
                             ]),
+                        Forms\Components\TextInput::make('eggs_small')
+                            ->label('Small Eggs')
+                            ->numeric()
+                            ->default(0)
+                            ->minValue(0)
+                            ->maxValue(fn (Get $get) => (int) $get('eggs_total') ?: 100000)
+                            ->lte('eggs_total')
+                            ->validationMessages([
+                                'lte' => 'Small eggs cannot exceed total eggs',
+                            ]),
                         Forms\Components\TextInput::make('egg_weight_avg_g')
                             ->numeric()
                             ->label('Avg Egg Weight (g)')
@@ -120,6 +130,10 @@ class DailyProductionResource extends Resource
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('eggs_soft')
                     ->label('Soft')
+                    ->numeric()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('eggs_small')
+                    ->label('Small')
                     ->numeric()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('egg_weight_avg_g')

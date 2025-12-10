@@ -56,6 +56,7 @@ class DailyDataEntry extends Page implements HasForms
             'eggs_cracked' => 0,
             'eggs_dirty' => 0,
             'eggs_soft' => 0,
+            'eggs_small' => 0,
             'kg_given' => null,
             'liters_used' => null,
             'mortality_count' => null,
@@ -122,7 +123,7 @@ class DailyDataEntry extends Page implements HasForms
                     ->icon('heroicon-o-circle-stack')
                     ->collapsible()
                     ->schema([
-                        Forms\Components\Grid::make(4)
+                        Forms\Components\Grid::make(5)
                             ->schema([
                                 Forms\Components\TextInput::make('eggs_total')
                                     ->label('Total Eggs')
@@ -149,6 +150,13 @@ class DailyDataEntry extends Page implements HasForms
 
                                 Forms\Components\TextInput::make('eggs_soft')
                                     ->label('Soft Shell')
+                                    ->numeric()
+                                    ->default(0)
+                                    ->minValue(0)
+                                    ->columnSpan(1),
+
+                                Forms\Components\TextInput::make('eggs_small')
+                                    ->label('Small')
                                     ->numeric()
                                     ->default(0)
                                     ->minValue(0)
@@ -522,6 +530,7 @@ class DailyDataEntry extends Page implements HasForms
             $this->data['eggs_cracked'] = $eggs->eggs_cracked;
             $this->data['eggs_dirty'] = $eggs->eggs_dirty;
             $this->data['eggs_soft'] = $eggs->eggs_soft;
+            $this->data['eggs_small'] = $eggs->eggs_small;
         }
 
         // Load existing water data
@@ -711,6 +720,7 @@ class DailyDataEntry extends Page implements HasForms
                 'eggs_cracked' => $data['eggs_cracked'] ?? 0,
                 'eggs_dirty' => $data['eggs_dirty'] ?? 0,
                 'eggs_soft' => $data['eggs_soft'] ?? 0,
+                'eggs_small' => $data['eggs_small'] ?? 0,
             ]);
         } else {
             DailyProduction::create([
@@ -720,6 +730,7 @@ class DailyDataEntry extends Page implements HasForms
                 'eggs_cracked' => $data['eggs_cracked'] ?? 0,
                 'eggs_dirty' => $data['eggs_dirty'] ?? 0,
                 'eggs_soft' => $data['eggs_soft'] ?? 0,
+                'eggs_small' => $data['eggs_small'] ?? 0,
             ]);
         }
 

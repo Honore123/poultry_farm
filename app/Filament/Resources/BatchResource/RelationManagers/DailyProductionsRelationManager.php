@@ -49,6 +49,12 @@ class DailyProductionsRelationManager extends RelationManager
                     ->default(0)
                     ->minValue(0)
                     ->lte('eggs_total'),
+                Forms\Components\TextInput::make('eggs_small')
+                    ->label('Small')
+                    ->numeric()
+                    ->default(0)
+                    ->minValue(0)
+                    ->lte('eggs_total'),
                 Forms\Components\TextInput::make('egg_weight_avg_g')
                     ->label('Avg Weight (g)')
                     ->numeric()
@@ -83,6 +89,9 @@ class DailyProductionsRelationManager extends RelationManager
                     ->numeric(),
                 Tables\Columns\TextColumn::make('eggs_soft')
                     ->label('Soft')
+                    ->numeric(),
+                Tables\Columns\TextColumn::make('eggs_small')
+                    ->label('Small')
                     ->numeric(),
                 Tables\Columns\TextColumn::make('egg_weight_avg_g')
                     ->label('Avg g')

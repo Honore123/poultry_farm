@@ -235,37 +235,48 @@ class FinancialDashboard extends Page implements HasForms
         $totalProjectedKg = 0;
         $batchDetails = [];
 
-        // Get active batches
-        $activeBatches = Batch::whereIn('status', ['brooding', 'growing', 'laying'])
+        // Get batches that were active (not culled/closed) at the selected month
+        // Include batches placed before or during the selected month
+        $activeBatches = Batch::whereNotIn('status', ['culled', 'closed'])
             ->where('placement_date', '<=', $endOfMonth)
             ->get();
 
         foreach ($activeBatches as $batch) {
-            // Calculate batch age at start of month (in weeks)
-            $ageAtStartDays = $batch->placement_date->diffInDays($startOfMonth);
+            // Skip if batch was placed after the selected month
+            if ($batch->placement_date > $endOfMonth) {
+                continue;
+            }
+
+            // Calculate batch age at start of selected month (in weeks)
+            $ageAtStartDays = max(0, $batch->placement_date->diffInDays($startOfMonth));
             $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
             
-            // Get total mortality up to start of month
+            // Determine the projected status based on age at the selected month
+            // Typically: Week 1-4 = brooding, Week 5-17 = growing, Week 18+ = laying
+            $projectedStatus = $this->getProjectedBatchStatus($ageAtStartWeeks);
+            
+            // Get total mortality up to start of selected month
             $mortalityBeforeMonth = MortalityLog::where('batch_id', $batch->id)
                 ->where('date', '<', $startOfMonth)
                 ->sum('count');
             
-            // Get mortality during the month
+            // For future months, estimate mortality based on average rates
+            // For past months, use actual data
             $mortalityDuringMonth = MortalityLog::where('batch_id', $batch->id)
                 ->whereBetween('date', [$startOfMonth, $endOfMonth])
                 ->sum('count');
             
-            // Current bird count (approximate - use start of month count)
+            // Current bird count at start of selected month
             $currentBirds = max(0, $batch->placement_qty - $mortalityBeforeMonth);
             
             // Average birds for the month (accounting for mortality)
             $avgBirds = max(0, $currentBirds - ($mortalityDuringMonth / 2));
             
-            // Get feed target based on batch status
+            // Get feed target based on PROJECTED status for the selected month
             $dailyFeedPerBirdG = 0;
             $targetSource = '';
             
-            if (in_array($batch->status, ['brooding', 'growing'])) {
+            if (in_array($projectedStatus, ['brooding', 'growing'])) {
                 // Use rearing targets
                 $rearingTarget = RearingTarget::where('week', '<=', $ageAtStartWeeks)
                     ->orderBy('week', 'desc')
@@ -293,7 +304,7 @@ class FinancialDashboard extends Page implements HasForms
             
             $batchDetails[] = [
                 'batch_code' => $batch->code,
-                'status' => $batch->status,
+                'status' => $projectedStatus,
                 'age_weeks' => $ageAtStartWeeks,
                 'bird_count' => round($avgBirds),
                 'daily_feed_g' => round($dailyFeedPerBirdG, 1),
@@ -311,10 +322,10 @@ class FinancialDashboard extends Page implements HasForms
         $historicalFeedKg = DailyFeedIntake::where('date', '>=', $threeMonthsAgo)
             ->sum('kg_given');
         
-        // Default price per kg if no historical data (use a reasonable default)
+        // Default price per kg if no historical data (710 RWF per kg)
         $avgPricePerKg = $historicalFeedKg > 0 
             ? $historicalFeedExpense / $historicalFeedKg 
-            : 450; // Default ~450 RWF per kg if no data
+            : 710; // Default 710 RWF per kg if no data
         
         $projectedCost = $totalProjectedKg * $avgPricePerKg;
 
@@ -322,11 +333,25 @@ class FinancialDashboard extends Page implements HasForms
             'totalProjectedKg' => round($totalProjectedKg, 2),
             'avgPricePerKg' => round($avgPricePerKg, 2),
             'projectedCost' => round($projectedCost, 2),
-            'batchCount' => count($activeBatches),
+            'batchCount' => count($batchDetails),
             'batchDetails' => $batchDetails,
             'historicalFeedKg' => round($historicalFeedKg, 2),
             'historicalFeedExpense' => round($historicalFeedExpense, 2),
         ];
+    }
+
+    /**
+     * Determine the projected batch status based on age in weeks
+     */
+    protected function getProjectedBatchStatus(int $ageWeeks): string
+    {
+        if ($ageWeeks <= 4) {
+            return 'brooding';
+        } elseif ($ageWeeks <= 17) {
+            return 'growing';
+        } else {
+            return 'laying';
+        }
     }
 
     /**
@@ -338,17 +363,25 @@ class FinancialDashboard extends Page implements HasForms
         $totalProjectedEggs = 0;
         $batchDetails = [];
 
-        // Get laying batches only (production phase)
-        $layingBatches = Batch::where('status', 'laying')
+        // Get all active batches (not culled/closed) that were placed before selected month
+        $activeBatches = Batch::whereNotIn('status', ['culled', 'closed'])
             ->where('placement_date', '<=', $endOfMonth)
             ->get();
 
-        foreach ($layingBatches as $batch) {
-            // Calculate batch age at start of month (in weeks)
-            $ageAtStartDays = $batch->placement_date->diffInDays($startOfMonth);
+        foreach ($activeBatches as $batch) {
+            // Calculate batch age at start of selected month (in weeks)
+            $ageAtStartDays = max(0, $batch->placement_date->diffInDays($startOfMonth));
             $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
             
-            // Get total mortality up to start of month
+            // Determine the projected status based on age at the selected month
+            $projectedStatus = $this->getProjectedBatchStatus($ageAtStartWeeks);
+            
+            // Only include batches that will be laying at the selected month
+            if ($projectedStatus !== 'laying') {
+                continue;
+            }
+            
+            // Get total mortality up to start of selected month
             $mortalityBeforeMonth = MortalityLog::where('batch_id', $batch->id)
                 ->where('date', '<', $startOfMonth)
                 ->sum('count');
@@ -358,13 +391,13 @@ class FinancialDashboard extends Page implements HasForms
                 ->whereBetween('date', [$startOfMonth, $endOfMonth])
                 ->sum('count');
             
-            // Current bird count (hens)
+            // Current bird count (hens) at start of selected month
             $currentHens = max(0, $batch->placement_qty - $mortalityBeforeMonth);
             
             // Average hens for the month (accounting for mortality)
             $avgHens = max(0, $currentHens - ($mortalityDuringMonth / 2));
             
-            // Get production target based on batch age
+            // Get production target based on batch age at selected month
             $productionTarget = ProductionTarget::where('week', '<=', $ageAtStartWeeks)
                 ->orderBy('week', 'desc')
                 ->first();
@@ -422,7 +455,7 @@ class FinancialDashboard extends Page implements HasForms
             'totalProjectedEggs' => $totalProjectedEggs,
             'avgPricePerEgg' => round($avgPricePerEgg, 2),
             'projectedIncome' => round($projectedIncome, 2),
-            'batchCount' => count($layingBatches),
+            'batchCount' => count($batchDetails),
             'batchDetails' => $batchDetails,
             'historicalEggProduction' => $historicalEggProduction,
             'historicalRevenue' => round($historicalRevenue, 2),

@@ -14,6 +14,7 @@ class DailyProduction extends Model
         'eggs_soft',
         'eggs_cracked',
         'eggs_dirty',
+        'eggs_small',
         'egg_weight_avg_g',
         'lighting_hours',
     ];
