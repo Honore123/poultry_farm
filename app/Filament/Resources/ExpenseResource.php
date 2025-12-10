@@ -6,6 +6,7 @@ use App\Filament\Resources\ExpenseResource\Pages;
 use App\Models\Expense;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -32,12 +33,21 @@ class ExpenseResource extends Resource
                             ->default(now()),
                         Forms\Components\Select::make('category')
                             ->options(Expense::CATEGORIES)
-                            ->searchable(),
+                            ->searchable()
+                            ->live(),
                         Forms\Components\TextInput::make('amount')
                             ->numeric()
                             ->required()
                             ->minValue(0)
                             ->prefix('RWF '),
+                        Forms\Components\TextInput::make('total_kgs')
+                            ->label('Total Kgs Bought')
+                            ->numeric()
+                            ->minValue(0)
+                            ->step(0.01)
+                            ->suffix('kg')
+                            ->visible(fn (Get $get) => $get('category') === 'feed')
+                            ->helperText('Enter the total kilograms of feed purchased'),
                         Forms\Components\Textarea::make('description')
                             ->rows(2)
                             ->columnSpanFull(),
@@ -77,6 +87,18 @@ class ExpenseResource extends Resource
                 Tables\Columns\TextColumn::make('amount')
                     ->money('RWF')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('total_kgs')
+                    ->label('Kgs')
+                    ->numeric(decimalPlaces: 2)
+                    ->suffix(' kg')
+                    ->toggleable()
+                    ->placeholder('-'),
+                Tables\Columns\TextColumn::make('price_per_kg')
+                    ->label('Price/Kg')
+                    ->getStateUsing(fn ($record) => $record->total_kgs > 0 
+                        ? number_format($record->amount / $record->total_kgs, 0) . ' RWF'
+                        : '-')
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('farm.name')
                     ->label('Farm')
                     ->toggleable(),

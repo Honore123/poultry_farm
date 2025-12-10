@@ -13,6 +13,7 @@ class Expense extends Model
         'category',
         'description',
         'amount',
+        'total_kgs',
         'farm_id',
         'house_id',
         'batch_id',
@@ -21,6 +22,7 @@ class Expense extends Model
     protected $casts = [
         'date' => 'date',
         'amount' => 'decimal:2',
+        'total_kgs' => 'decimal:2',
     ];
 
     /**

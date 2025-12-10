@@ -162,8 +162,8 @@ class FinancialDashboard extends Page implements HasForms
         // Calculate projected feed expense based on targets
         $feedProjection = $this->calculateFeedProjection($startOfMonth, $endOfMonth);
         
-        // Use projected feed for current/future months, actual for past
-        $feedExpense = $isCurrentOrFuture ? $feedProjection['projectedCost'] : $actualFeedExpense;
+        // Use projected feed with tolerance for current/future months, actual for past
+        $feedExpense = $isCurrentOrFuture ? $feedProjection['projectedCostWithTolerance'] : $actualFeedExpense;
 
         // Get other expenses (excluding salary and feed)
         $otherExpenses = $actualExpenses->filter(function ($item, $category) {
@@ -313,30 +313,57 @@ class FinancialDashboard extends Page implements HasForms
             ];
         }
 
-        // Calculate average feed price from historical data (last 3 months)
+        // Calculate highest feed price per kg from feed expenses (last 3 months)
+        // Only consider expenses that have total_kgs recorded
         $threeMonthsAgo = now()->subMonths(3);
-        $historicalFeedExpense = Expense::where('category', 'feed')
+        $feedExpenses = Expense::where('category', 'feed')
             ->where('date', '>=', $threeMonthsAgo)
-            ->sum('amount');
+            ->whereNotNull('total_kgs')
+            ->where('total_kgs', '>', 0)
+            ->get();
         
-        $historicalFeedKg = DailyFeedIntake::where('date', '>=', $threeMonthsAgo)
-            ->sum('kg_given');
+        // Calculate price per kg for each expense and find the highest
+        $highestPricePerKg = 0;
+        $feedPriceDetails = [];
         
-        // Default price per kg if no historical data (710 RWF per kg)
-        $avgPricePerKg = $historicalFeedKg > 0 
-            ? $historicalFeedExpense / $historicalFeedKg 
+        foreach ($feedExpenses as $expense) {
+            $pricePerKg = $expense->amount / $expense->total_kgs;
+            $feedPriceDetails[] = [
+                'date' => $expense->date->format('Y-m-d'),
+                'amount' => $expense->amount,
+                'total_kgs' => $expense->total_kgs,
+                'price_per_kg' => round($pricePerKg, 2),
+            ];
+            
+            if ($pricePerKg > $highestPricePerKg) {
+                $highestPricePerKg = $pricePerKg;
+            }
+        }
+        
+        // Default price per kg if no historical data with kgs recorded (710 RWF per kg)
+        $basePricePerKg = $highestPricePerKg > 0 
+            ? $highestPricePerKg 
             : 710; // Default 710 RWF per kg if no data
         
-        $projectedCost = $totalProjectedKg * $avgPricePerKg;
+        // Apply 3% tolerance to price per kg
+        $tolerancePercent = 3;
+        $pricePerKgWithTolerance = $basePricePerKg * (1 + ($tolerancePercent / 100));
+        
+        // Calculate projected costs (base and with tolerance)
+        $projectedCost = $totalProjectedKg * $basePricePerKg;
+        $projectedCostWithTolerance = $totalProjectedKg * $pricePerKgWithTolerance;
 
         return [
             'totalProjectedKg' => round($totalProjectedKg, 2),
-            'avgPricePerKg' => round($avgPricePerKg, 2),
+            'avgPricePerKg' => round($basePricePerKg, 2),
+            'pricePerKgWithTolerance' => round($pricePerKgWithTolerance, 2),
+            'tolerancePercent' => $tolerancePercent,
             'projectedCost' => round($projectedCost, 2),
+            'projectedCostWithTolerance' => round($projectedCostWithTolerance, 2),
             'batchCount' => count($batchDetails),
             'batchDetails' => $batchDetails,
-            'historicalFeedKg' => round($historicalFeedKg, 2),
-            'historicalFeedExpense' => round($historicalFeedExpense, 2),
+            'feedPriceDetails' => $feedPriceDetails,
+            'feedExpenseCount' => count($feedExpenses),
         ];
     }
 

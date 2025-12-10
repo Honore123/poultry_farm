@@ -403,13 +403,18 @@
                     <x-filament::section>
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Feed</p>
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    Feed
+                                    @if($projection['isCurrentOrFuture'])
+                                        <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded">+{{ $projection['feedProjection']['tolerancePercent'] }}%</span>
+                                    @endif
+                                </p>
                                 <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">
                                     RWF {{ number_format($projection['feedExpense'], 0) }}
                                 </p>
                                 <p class="text-xs text-gray-500 mt-1">
                                     @if($projection['isCurrentOrFuture'])
-                                        {{ number_format($projection['feedProjection']['totalProjectedKg'], 0) }} kg projected
+                                        {{ number_format($projection['feedProjection']['totalProjectedKg'], 0) }} kg @ {{ number_format($projection['feedProjection']['pricePerKgWithTolerance'], 0) }}/kg
                                     @else
                                         Actual expenses
                                     @endif
@@ -560,14 +565,26 @@
                                         </tr>
                                         <tr class="bg-amber-50 dark:bg-amber-900/20">
                                             <td colspan="4" class="py-2 text-gray-700 dark:text-gray-300">
-                                                Avg. Price per kg
-                                                <span class="text-xs text-gray-500 ml-1">(based on last 3 months)</span>
+                                                Highest Price per kg
+                                                <span class="text-xs text-gray-500 ml-1">(from last 3 months)</span>
                                             </td>
                                             <td class="py-2 text-right font-medium text-gray-700 dark:text-gray-300">RWF {{ number_format($projection['feedProjection']['avgPricePerKg'], 0) }}</td>
                                         </tr>
+                                        <tr class="bg-amber-50 dark:bg-amber-900/20">
+                                            <td colspan="4" class="py-2 text-gray-700 dark:text-gray-300">
+                                                Price per kg (+{{ $projection['feedProjection']['tolerancePercent'] }}% tolerance)
+                                            </td>
+                                            <td class="py-2 text-right font-medium text-amber-600">RWF {{ number_format($projection['feedProjection']['pricePerKgWithTolerance'], 0) }}</td>
+                                        </tr>
                                         <tr class="bg-amber-100 dark:bg-amber-900/40">
                                             <td colspan="4" class="py-2 font-bold text-gray-900 dark:text-white">Projected Feed Cost</td>
-                                            <td class="py-2 text-right font-bold text-amber-600">RWF {{ number_format($projection['feedProjection']['projectedCost'], 0) }}</td>
+                                            <td class="py-2 text-right font-bold text-gray-700 dark:text-gray-300">RWF {{ number_format($projection['feedProjection']['projectedCost'], 0) }}</td>
+                                        </tr>
+                                        <tr class="bg-amber-200 dark:bg-amber-800/60">
+                                            <td colspan="4" class="py-2 font-bold text-gray-900 dark:text-white">
+                                                Feed Cost (+{{ $projection['feedProjection']['tolerancePercent'] }}% tolerance)
+                                            </td>
+                                            <td class="py-2 text-right font-bold text-amber-700 dark:text-amber-400">RWF {{ number_format($projection['feedProjection']['projectedCostWithTolerance'], 0) }}</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -757,6 +774,9 @@
                                     <td class="py-3 text-gray-900 dark:text-white flex items-center gap-2">
                                         <div class="w-3 h-3 rounded bg-amber-500"></div>
                                         Feed
+                                        @if($projection['isCurrentOrFuture'])
+                                            <span class="px-1.5 py-0.5 text-xs font-semibold bg-amber-200 dark:bg-amber-700 text-amber-800 dark:text-amber-200 rounded">+{{ $projection['feedProjection']['tolerancePercent'] }}%</span>
+                                        @endif
                                     </td>
                                     <td class="py-3 text-right font-medium text-gray-900 dark:text-white">
                                         RWF {{ number_format($projection['feedExpense'], 0) }}
