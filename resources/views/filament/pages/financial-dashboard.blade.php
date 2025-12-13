@@ -5,7 +5,252 @@
 
     @php
         $data = $this->getFinancialData();
+        $breakeven = $this->getBreakevenData();
     @endphp
+
+    {{-- Breakeven Point Visualization --}}
+    <div class="mt-6 mb-8">
+        <x-filament::section>
+            <x-slot name="heading">
+                <div class="flex items-center gap-2">
+                    <x-heroicon-o-scale class="w-5 h-5 text-primary-500" />
+                    Breakeven Analysis (Last 12 Months)
+                </div>
+            </x-slot>
+
+            {{-- Summary Cards --}}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                {{-- Total Income --}}
+                <div class="bg-success-50 dark:bg-success-900/30 rounded-lg p-4 border border-success-200 dark:border-success-800">
+                    <p class="text-sm font-medium text-success-700 dark:text-success-300">Total Income</p>
+                    <p class="text-xl font-bold text-success-600 dark:text-success-400">
+                        RWF {{ number_format($breakeven['totalIncome'], 0) }}
+                    </p>
+                </div>
+
+                {{-- Total Expenses --}}
+                <div class="bg-danger-50 dark:bg-danger-900/30 rounded-lg p-4 border border-danger-200 dark:border-danger-800">
+                    <p class="text-sm font-medium text-danger-700 dark:text-danger-300">Total Expenses</p>
+                    <p class="text-xl font-bold text-danger-600 dark:text-danger-400">
+                        RWF {{ number_format($breakeven['totalExpenses'], 0) }}
+                    </p>
+                </div>
+
+                {{-- Net Profit/Loss --}}
+                <div class="{{ $breakeven['isBreakeven'] ? 'bg-success-50 dark:bg-success-900/30 border-success-200 dark:border-success-800' : 'bg-danger-50 dark:bg-danger-900/30 border-danger-200 dark:border-danger-800' }} rounded-lg p-4 border">
+                    <p class="text-sm font-medium {{ $breakeven['isBreakeven'] ? 'text-success-700 dark:text-success-300' : 'text-danger-700 dark:text-danger-300' }}">
+                        Net {{ $breakeven['isBreakeven'] ? 'Profit' : 'Loss' }}
+                    </p>
+                    <p class="text-xl font-bold {{ $breakeven['isBreakeven'] ? 'text-success-600 dark:text-success-400' : 'text-danger-600 dark:text-danger-400' }}">
+                        RWF {{ number_format(abs($breakeven['totalProfit']), 0) }}
+                    </p>
+                    <p class="text-xs {{ $breakeven['isBreakeven'] ? 'text-success-600' : 'text-danger-600' }}">
+                        {{ $breakeven['profitMargin'] }}% margin
+                    </p>
+                </div>
+
+                {{-- Cost Per Egg --}}
+                <div class="bg-primary-50 dark:bg-primary-900/30 rounded-lg p-4 border border-primary-200 dark:border-primary-800">
+                    <p class="text-sm font-medium text-primary-700 dark:text-primary-300">Cost Per Egg</p>
+                    <p class="text-xl font-bold text-primary-600 dark:text-primary-400">
+                        RWF {{ number_format($breakeven['costPerEgg'], 1) }}
+                    </p>
+                    <p class="text-xs text-primary-600 dark:text-primary-400">
+                        @if($breakeven['costSource'] === 'calculated')
+                            Feed + Vet + Salaries
+                        @else
+                            Default estimate
+                        @endif
+                    </p>
+                </div>
+            </div>
+
+            {{-- Breakeven Chart --}}
+            <div class="mt-6">
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">Monthly Income vs Expenses</h4>
+                
+                @if(count($breakeven['monthlyData']) > 0)
+                    @php
+                        $maxValue = max(
+                            max(array_column($breakeven['monthlyData'], 'income')),
+                            max(array_column($breakeven['monthlyData'], 'expenses'))
+                        );
+                        $maxValue = $maxValue ?: 1; // Prevent division by zero
+                    @endphp
+                    
+                    <div class="overflow-x-auto">
+                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 80 }}px">
+                            {{-- Chart Bars --}}
+                            <div class="flex items-end gap-3 h-64">
+                                @foreach($breakeven['monthlyData'] as $index => $month)
+                                    @php
+                                        $incomeHeight = $maxValue > 0 ? ($month['income'] / $maxValue) * 100 : 0;
+                                        $expenseHeight = $maxValue > 0 ? ($month['expenses'] / $maxValue) * 100 : 0;
+                                        $isProfit = $month['netProfit'] >= 0;
+                                    @endphp
+                                    <div class="flex-1 flex flex-col items-center relative group">
+                                        {{-- Tooltip on hover --}}
+                                        <div class="absolute bottom-full mb-2 hidden group-hover:block z-10">
+                                            <div class="bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg py-2 px-3 shadow-lg whitespace-nowrap">
+                                                <p class="font-bold mb-1">{{ $month['label'] }}</p>
+                                                <p class="text-success-400">Income: RWF {{ number_format($month['income'], 0) }}</p>
+                                                <p class="text-danger-400">Expenses: RWF {{ number_format($month['expenses'], 0) }}</p>
+                                                <p class="{{ $isProfit ? 'text-success-300' : 'text-danger-300' }} font-medium mt-1">
+                                                    {{ $isProfit ? 'Profit' : 'Loss' }}: RWF {{ number_format(abs($month['netProfit']), 0) }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        
+                                        {{-- Profit/Loss indicator --}}
+                                        <div class="absolute -top-6 left-1/2 transform -translate-x-1/2">
+                                            @if($month['income'] > 0 || $month['expenses'] > 0)
+                                                @if($isProfit)
+                                                    <x-heroicon-m-arrow-up class="w-4 h-4 text-success-500" />
+                                                @else
+                                                    <x-heroicon-m-arrow-down class="w-4 h-4 text-danger-500" />
+                                                @endif
+                                            @endif
+                                        </div>
+                                        
+                                        {{-- Bars container --}}
+                                        <div class="flex gap-1 items-end h-52 w-full justify-center">
+                                            {{-- Income bar --}}
+                                            <div 
+                                                class="w-5 bg-gradient-to-t from-success-600 to-success-400 rounded-t transition-all duration-300 hover:from-success-500 hover:to-success-300" 
+                                                style="height: {{ max($incomeHeight, 0.5) }}%"
+                                                title="Income: RWF {{ number_format($month['income'], 0) }}"
+                                            ></div>
+                                            {{-- Expense bar --}}
+                                            <div 
+                                                class="w-5 bg-gradient-to-t from-danger-600 to-danger-400 rounded-t transition-all duration-300 hover:from-danger-500 hover:to-danger-300" 
+                                                style="height: {{ max($expenseHeight, 0.5) }}%"
+                                                title="Expenses: RWF {{ number_format($month['expenses'], 0) }}"
+                                            ></div>
+                                        </div>
+                                        
+                                        {{-- Month label --}}
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                                            <span class="block transform -rotate-45 origin-top-left translate-y-2 translate-x-4 whitespace-nowrap">
+                                                {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            
+                            {{-- X-axis line --}}
+                            <div class="border-t border-gray-300 dark:border-gray-600 mt-1"></div>
+                        </div>
+                    </div>
+                    
+                    {{-- Legend --}}
+                    <div class="flex justify-center gap-8 mt-10">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-gradient-to-t from-success-600 to-success-400 rounded"></div>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Income</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 bg-gradient-to-t from-danger-600 to-danger-400 rounded"></div>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <x-heroicon-m-arrow-up class="w-4 h-4 text-success-500" />
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Profit Month</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <x-heroicon-m-arrow-down class="w-4 h-4 text-danger-500" />
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Loss Month</span>
+                        </div>
+                    </div>
+                @else
+                    <div class="text-center py-8 text-gray-500">
+                        <x-heroicon-o-chart-bar class="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>No financial data available</p>
+                    </div>
+                @endif
+            </div>
+
+            {{-- Pricing Recommendations --}}
+            <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
+                    <x-heroicon-o-currency-dollar class="w-5 h-5 text-primary-500" />
+                    Egg Pricing Recommendations
+                </h4>
+
+                {{-- Cost Breakdown Info --}}
+                <div class="mb-4 p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg border border-primary-200 dark:border-primary-700">
+                    <div class="flex flex-wrap items-center gap-4 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-primary-700 dark:text-primary-300 font-medium">Cost Per Egg:</span>
+                            <span class="font-bold text-primary-600 dark:text-primary-400">RWF {{ number_format($breakeven['costPerEgg'], 1) }}</span>
+                            @if($breakeven['costSource'] === 'calculated')
+                                <span class="text-xs px-2 py-0.5 bg-primary-200 dark:bg-primary-800 text-primary-700 dark:text-primary-300 rounded">
+                                    from Feed + Veterinary + Salaries
+                                </span>
+                            @else
+                                <span class="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded">
+                                    default estimate
+                                </span>
+                            @endif
+                        </div>
+                        @if($breakeven['costSource'] === 'calculated')
+                            <div class="text-xs text-primary-600 dark:text-primary-400">
+                                RWF {{ number_format($breakeven['primaryExpenses'], 0) }} ÷ {{ number_format($breakeven['totalEggsProduced'], 0) }} eggs
+                            </div>
+                        @endif
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    @foreach($breakeven['recommendedPrices'] as $margin => $price)
+                        @php
+                            $isBreakevenMargin = $margin == 20;
+                            $isHighlighted = $margin == 30 || $margin == 40;
+                        @endphp
+                        <div class="rounded-lg p-4 text-center {{ $isHighlighted ? 'bg-primary-100 dark:bg-primary-900/50 border-2 border-primary-400 dark:border-primary-600' : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700' }}">
+                            <p class="text-xs font-medium {{ $isHighlighted ? 'text-primary-700 dark:text-primary-300' : 'text-gray-500 dark:text-gray-400' }}">
+                                {{ $margin }}% Margin
+                                @if($isHighlighted)
+                                    <span class="text-xs text-primary-600 dark:text-primary-400">(Recommended)</span>
+                                @endif
+                            </p>
+                            <p class="text-xl font-bold {{ $isHighlighted ? 'text-primary-600 dark:text-primary-400' : 'text-gray-900 dark:text-white' }}">
+                                RWF {{ number_format($price, 0) }}
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                per egg
+                            </p>
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div class="flex flex-wrap items-center gap-4 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 dark:text-gray-400">Breakeven Price:</span>
+                            <span class="font-bold text-warning-600">RWF {{ number_format($breakeven['breakevenEggPrice'], 1) }}</span>
+                        </div>
+                        <div class="text-gray-300 dark:text-gray-600">|</div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 dark:text-gray-400">Avg. Selling Price:</span>
+                            <span class="font-bold {{ $breakeven['avgPricePerEgg'] > $breakeven['breakevenEggPrice'] ? 'text-success-600' : 'text-danger-600' }}">
+                                RWF {{ number_format($breakeven['avgPricePerEgg'], 1) }}
+                            </span>
+                            @if($breakeven['priceSource'] === 'sales_history')
+                                <span class="text-xs px-2 py-0.5 bg-success-100 dark:bg-success-900 text-success-700 dark:text-success-300 rounded">
+                                    from sales history
+                                </span>
+                            @else
+                                <span class="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded">
+                                    default
+                                </span>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </x-filament::section>
+    </div>
 
     {{-- Key Financial Stats --}}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">

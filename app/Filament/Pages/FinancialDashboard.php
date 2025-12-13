@@ -646,12 +646,157 @@ class FinancialDashboard extends Page implements HasForms
         ];
     }
 
+    /**
+     * Get breakeven analysis data for the last 12 months
+     */
+    public function getBreakevenData(): array
+    {
+        $months = [];
+        $monthlyData = [];
+        $cumulativeIncome = 0;
+        $cumulativeExpenses = 0;
+        
+        // Get last 12 months of data
+        for ($i = 11; $i >= 0; $i--) {
+            $monthStart = now()->subMonths($i)->startOfMonth();
+            $monthEnd = now()->subMonths($i)->endOfMonth();
+            $monthLabel = $monthStart->format('M Y');
+            $monthKey = $monthStart->format('Y-m');
+            
+            // Get monthly income (from delivered sales)
+            $monthlyIncome = SalesOrderItem::whereHas('salesOrder', function ($q) use ($monthStart, $monthEnd) {
+                $q->whereBetween('order_date', [$monthStart, $monthEnd])
+                  ->where('status', 'delivered');
+            })->selectRaw('SUM(qty * unit_price) as total')->value('total') ?? 0;
+            
+            // Get monthly expenses
+            $monthlyExpense = Expense::whereBetween('date', [$monthStart, $monthEnd])->sum('amount');
+            
+            // Calculate net profit/loss
+            $netProfit = $monthlyIncome - $monthlyExpense;
+            
+            // Update cumulative totals
+            $cumulativeIncome += $monthlyIncome;
+            $cumulativeExpenses += $monthlyExpense;
+            
+            $months[] = $monthLabel;
+            $monthlyData[$monthKey] = [
+                'label' => $monthLabel,
+                'income' => (float) $monthlyIncome,
+                'expenses' => (float) $monthlyExpense,
+                'netProfit' => (float) $netProfit,
+                'cumulativeIncome' => (float) $cumulativeIncome,
+                'cumulativeExpenses' => (float) $cumulativeExpenses,
+                'cumulativeProfit' => (float) ($cumulativeIncome - $cumulativeExpenses),
+            ];
+        }
+        
+        // Calculate overall metrics
+        $totalIncome = $cumulativeIncome;
+        $totalExpenses = $cumulativeExpenses;
+        $totalProfit = $totalIncome - $totalExpenses;
+        
+        // Calculate total eggs produced
+        $twelveMonthsAgo = now()->subMonths(12)->startOfMonth();
+        $totalEggsProduced = DailyProduction::where('date', '>=', $twelveMonthsAgo)
+            ->sum('eggs_total');
+        
+        // Calculate cost per egg using primary cost categories (feed, veterinary, salaries)
+        // These are the main operational costs for egg production
+        $primaryExpenses = Expense::where('date', '>=', $twelveMonthsAgo)
+            ->whereIn('category', ['feed', 'veterinary', 'salary'])
+            ->sum('amount');
+        
+        // Cost per egg calculation hierarchy:
+        // 1. If eggs produced, use primary expenses (feed + veterinary + salaries) / eggs
+        // 2. If no eggs but has expenses, fall back to 150 RWF
+        $costPerEgg = 150; // Default fallback
+        $costSource = 'default';
+        
+        if ($totalEggsProduced > 0 && $primaryExpenses > 0) {
+            $costPerEgg = $primaryExpenses / $totalEggsProduced;
+            $costSource = 'calculated';
+        }
+        
+        // Average monthly income and expenses
+        $avgMonthlyIncome = $totalIncome / 12;
+        $avgMonthlyExpenses = $totalExpenses / 12;
+        
+        // Profit margin
+        $profitMargin = $totalIncome > 0 ? ($totalProfit / $totalIncome) * 100 : 0;
+        
+        // Find the breakeven point (month where cumulative income crosses cumulative expenses)
+        $breakevenMonth = null;
+        $prevProfit = null;
+        foreach ($monthlyData as $key => $data) {
+            if ($prevProfit !== null && $prevProfit < 0 && $data['cumulativeProfit'] >= 0) {
+                $breakevenMonth = $data['label'];
+                break;
+            }
+            $prevProfit = $data['cumulativeProfit'];
+        }
+        
+        // Get average selling price from historical egg sales data (last 3 months)
+        $threeMonthsAgo = now()->subMonths(3);
+        $historicalEggSales = SalesOrderItem::whereHas('salesOrder', function ($q) use ($threeMonthsAgo) {
+            $q->where('order_date', '>=', $threeMonthsAgo)
+              ->where('status', 'delivered');
+        })
+            ->where('product', 'like', '%egg%')
+            ->selectRaw('SUM(qty * unit_price) as total_revenue, SUM(qty) as total_qty')
+            ->first();
+        
+        $historicalRevenue = $historicalEggSales->total_revenue ?? 0;
+        $historicalQty = $historicalEggSales->total_qty ?? 0;
+        
+        // Average price per egg from sales data, fallback to 150 RWF if no sales
+        $avgPricePerEgg = $historicalQty > 0 
+            ? $historicalRevenue / $historicalQty 
+            : 150; // Default 150 RWF if no sales data
+        
+        $priceSource = $historicalQty > 0 ? 'sales_history' : 'default';
+        
+        // Breakeven price = cost per egg (selling at cost means no profit)
+        $breakevenEggPrice = $costPerEgg;
+        
+        // Recommended prices at various margins
+        $recommendedPrices = [];
+        $margins = [20, 30, 40, 50];
+        foreach ($margins as $margin) {
+            $recommendedPrices[$margin] = $costPerEgg > 0 
+                ? round($costPerEgg / (1 - ($margin / 100)), 2) 
+                : 0;
+        }
+        
+        return [
+            'months' => $months,
+            'monthlyData' => array_values($monthlyData),
+            'totalIncome' => $totalIncome,
+            'totalExpenses' => $totalExpenses,
+            'totalProfit' => $totalProfit,
+            'profitMargin' => round($profitMargin, 1),
+            'avgMonthlyIncome' => round($avgMonthlyIncome, 0),
+            'avgMonthlyExpenses' => round($avgMonthlyExpenses, 0),
+            'totalEggsProduced' => $totalEggsProduced,
+            'primaryExpenses' => $primaryExpenses,
+            'costPerEgg' => round($costPerEgg, 2),
+            'costSource' => $costSource,
+            'avgPricePerEgg' => round($avgPricePerEgg, 2),
+            'priceSource' => $priceSource,
+            'breakevenEggPrice' => round($breakevenEggPrice, 2),
+            'breakevenMonth' => $breakevenMonth,
+            'recommendedPrices' => $recommendedPrices,
+            'isBreakeven' => $totalProfit >= 0,
+        ];
+    }
+
     protected function getViewData(): array
     {
         return [
             'data' => $this->getFinancialData(),
             'projection' => $this->getExpenseProjection(),
             'projectionFormSchema' => $this->getProjectionFormSchema(),
+            'breakeven' => $this->getBreakevenData(),
         ];
     }
 }
