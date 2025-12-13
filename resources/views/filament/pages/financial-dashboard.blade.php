@@ -69,97 +69,171 @@
             <div class="mt-6">
                 <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">Monthly Income vs Expenses</h4>
                 
-                @if(count($breakeven['monthlyData']) > 0)
-                    @php
-                        $maxValue = max(
-                            max(array_column($breakeven['monthlyData'], 'income')),
-                            max(array_column($breakeven['monthlyData'], 'expenses'))
-                        );
-                        $maxValue = $maxValue ?: 1; // Prevent division by zero
-                    @endphp
-                    
+                @php
+                    $hasAnyData = false;
+                    $maxValue = 1;
+                    $chartHeight = 180; // pixels
+                    if (count($breakeven['monthlyData']) > 0) {
+                        $incomeValues = array_column($breakeven['monthlyData'], 'income');
+                        $expenseValues = array_column($breakeven['monthlyData'], 'expenses');
+                        $maxIncome = !empty($incomeValues) ? max($incomeValues) : 0;
+                        $maxExpense = !empty($expenseValues) ? max($expenseValues) : 0;
+                        $maxValue = max($maxIncome, $maxExpense, 1);
+                        $hasAnyData = ($maxIncome > 0 || $maxExpense > 0);
+                    }
+                @endphp
+                
+                @if(count($breakeven['monthlyData']) > 0 && $hasAnyData)
                     <div class="overflow-x-auto">
-                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 80 }}px">
+                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 70 }}px">
                             {{-- Chart Bars --}}
-                            <div class="flex items-end gap-3 h-64">
+                            <div class="flex items-end gap-2">
                                 @foreach($breakeven['monthlyData'] as $index => $month)
                                     @php
-                                        $incomeHeight = $maxValue > 0 ? ($month['income'] / $maxValue) * 100 : 0;
-                                        $expenseHeight = $maxValue > 0 ? ($month['expenses'] / $maxValue) * 100 : 0;
+                                        // Calculate height in pixels
+                                        $incomeHeightPx = $maxValue > 0 ? round(($month['income'] / $maxValue) * $chartHeight) : 0;
+                                        $expenseHeightPx = $maxValue > 0 ? round(($month['expenses'] / $maxValue) * $chartHeight) : 0;
+                                        // Minimum height of 6px for non-zero values
+                                        $incomeHeightPx = $month['income'] > 0 ? max($incomeHeightPx, 6) : 0;
+                                        $expenseHeightPx = $month['expenses'] > 0 ? max($expenseHeightPx, 6) : 0;
                                         $isProfit = $month['netProfit'] >= 0;
                                     @endphp
-                                    <div class="flex-1 flex flex-col items-center relative group">
-                                        {{-- Tooltip on hover --}}
-                                        <div class="absolute bottom-full mb-2 hidden group-hover:block z-10">
-                                            <div class="bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg py-2 px-3 shadow-lg whitespace-nowrap">
-                                                <p class="font-bold mb-1">{{ $month['label'] }}</p>
-                                                <p class="text-success-400">Income: RWF {{ number_format($month['income'], 0) }}</p>
-                                                <p class="text-danger-400">Expenses: RWF {{ number_format($month['expenses'], 0) }}</p>
-                                                <p class="{{ $isProfit ? 'text-success-300' : 'text-danger-300' }} font-medium mt-1">
-                                                    {{ $isProfit ? 'Profit' : 'Loss' }}: RWF {{ number_format(abs($month['netProfit']), 0) }}
-                                                </p>
+                                    <div 
+                                        class="flex-1 flex flex-col items-center relative" 
+                                        style="min-width: 50px;"
+                                        x-data="{ showTooltip: false }"
+                                        @mouseenter="showTooltip = true"
+                                        @mouseleave="showTooltip = false"
+                                    >
+                                        {{-- Bars container with tooltip --}}
+                                        <div class="flex gap-1 items-end w-full justify-center relative" style="height: {{ $chartHeight }}px;">
+                                            {{-- Tooltip on hover using Alpine.js --}}
+                                            <div 
+                                                x-show="showTooltip" 
+                                                x-transition:enter="transition ease-out duration-100"
+                                                x-transition:enter-start="opacity-0 transform scale-95"
+                                                x-transition:enter-end="opacity-100 transform scale-100"
+                                                x-transition:leave="transition ease-in duration-75"
+                                                x-transition:leave-start="opacity-100 transform scale-100"
+                                                x-transition:leave-end="opacity-0 transform scale-95"
+                                                class="absolute left-1/2 bottom-full mb-2" 
+                                                style="transform: translateX(-50%); z-index: 9999;"
+                                            >
+                                                <div class="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl whitespace-nowrap" style="min-width: 180px;">
+                                                    <p class="font-bold mb-2 text-center border-b border-gray-600 pb-1">{{ $month['label'] }}</p>
+                                                    <div class="space-y-1">
+                                                        <p class="flex justify-between gap-4">
+                                                            <span style="color: #4ade80;">● Income:</span>
+                                                            <span class="font-medium">RWF {{ number_format($month['income'], 0) }}</span>
+                                                        </p>
+                                                        <p class="flex justify-between gap-4">
+                                                            <span style="color: #f87171;">● Expenses:</span>
+                                                            <span class="font-medium">RWF {{ number_format($month['expenses'], 0) }}</span>
+                                                        </p>
+                                                        <p class="flex justify-between gap-4 pt-1 border-t border-gray-600 mt-1" style="color: {{ $isProfit ? '#86efac' : '#fca5a5' }};">
+                                                            <span>{{ $isProfit ? '↑ Profit:' : '↓ Loss:' }}</span>
+                                                            <span class="font-bold">RWF {{ number_format(abs($month['netProfit']), 0) }}</span>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {{-- Arrow pointer --}}
+                                                <div style="position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #111827;"></div>
                                             </div>
+                                            
+                                            {{-- Income bar (Green) --}}
+                                            <div 
+                                                class="rounded-t cursor-pointer transition-all hover:opacity-80" 
+                                                style="width: 20px; height: {{ $incomeHeightPx }}px; background: linear-gradient(to top, #16a34a, #22c55e);"
+                                            ></div>
+                                            {{-- Expense bar (Red) --}}
+                                            <div 
+                                                class="rounded-t cursor-pointer transition-all hover:opacity-80" 
+                                                style="width: 20px; height: {{ $expenseHeightPx }}px; background: linear-gradient(to top, #dc2626, #ef4444);"
+                                            ></div>
                                         </div>
                                         
                                         {{-- Profit/Loss indicator --}}
-                                        <div class="absolute -top-6 left-1/2 transform -translate-x-1/2">
-                                            @if($month['income'] > 0 || $month['expenses'] > 0)
+                                        @if($month['income'] > 0 || $month['expenses'] > 0)
+                                            <div class="mt-1">
                                                 @if($isProfit)
-                                                    <x-heroicon-m-arrow-up class="w-4 h-4 text-success-500" />
+                                                    <x-heroicon-m-arrow-up class="w-4 h-4 text-green-500" />
                                                 @else
-                                                    <x-heroicon-m-arrow-down class="w-4 h-4 text-danger-500" />
+                                                    <x-heroicon-m-arrow-down class="w-4 h-4 text-red-500" />
                                                 @endif
-                                            @endif
-                                        </div>
-                                        
-                                        {{-- Bars container --}}
-                                        <div class="flex gap-1 items-end h-52 w-full justify-center">
-                                            {{-- Income bar --}}
-                                            <div 
-                                                class="w-5 bg-gradient-to-t from-success-600 to-success-400 rounded-t transition-all duration-300 hover:from-success-500 hover:to-success-300" 
-                                                style="height: {{ max($incomeHeight, 0.5) }}%"
-                                                title="Income: RWF {{ number_format($month['income'], 0) }}"
-                                            ></div>
-                                            {{-- Expense bar --}}
-                                            <div 
-                                                class="w-5 bg-gradient-to-t from-danger-600 to-danger-400 rounded-t transition-all duration-300 hover:from-danger-500 hover:to-danger-300" 
-                                                style="height: {{ max($expenseHeight, 0.5) }}%"
-                                                title="Expenses: RWF {{ number_format($month['expenses'], 0) }}"
-                                            ></div>
-                                        </div>
+                                            </div>
+                                        @else
+                                            <div class="h-5"></div>
+                                        @endif
                                         
                                         {{-- Month label --}}
-                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-                                            <span class="block transform -rotate-45 origin-top-left translate-y-2 translate-x-4 whitespace-nowrap">
-                                                {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
-                                            </span>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                                            {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
                                         </div>
                                     </div>
                                 @endforeach
                             </div>
                             
                             {{-- X-axis line --}}
-                            <div class="border-t border-gray-300 dark:border-gray-600 mt-1"></div>
+                            <div class="border-t-2 border-gray-300 dark:border-gray-600 mt-1"></div>
                         </div>
                     </div>
                     
                     {{-- Legend --}}
-                    <div class="flex justify-center gap-8 mt-10">
+                    <div class="flex flex-wrap justify-center gap-6 mt-6">
                         <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 bg-gradient-to-t from-success-600 to-success-400 rounded"></div>
+                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #16a34a, #22c55e);"></div>
                             <span class="text-sm text-gray-600 dark:text-gray-400">Income</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 bg-gradient-to-t from-danger-600 to-danger-400 rounded"></div>
+                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #dc2626, #ef4444);"></div>
                             <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <x-heroicon-m-arrow-up class="w-4 h-4 text-success-500" />
+                            <x-heroicon-m-arrow-up class="w-4 h-4 text-green-500" />
                             <span class="text-sm text-gray-600 dark:text-gray-400">Profit Month</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <x-heroicon-m-arrow-down class="w-4 h-4 text-danger-500" />
+                            <x-heroicon-m-arrow-down class="w-4 h-4 text-red-500" />
                             <span class="text-sm text-gray-600 dark:text-gray-400">Loss Month</span>
+                        </div>
+                    </div>
+                @elseif(count($breakeven['monthlyData']) > 0)
+                    {{-- Has months but no data - show empty state with month labels --}}
+                    <div class="overflow-x-auto">
+                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 70 }}px">
+                            <div class="flex items-end gap-2">
+                                @foreach($breakeven['monthlyData'] as $index => $month)
+                                    <div class="flex-1 flex flex-col items-center" style="min-width: 50px;">
+                                        {{-- Empty bar placeholder --}}
+                                        <div class="flex gap-1 items-end w-full justify-center" style="height: {{ $chartHeight }}px;">
+                                            <div class="rounded-t" style="width: 20px; height: 4px; background: #d1d5db;"></div>
+                                            <div class="rounded-t" style="width: 20px; height: 4px; background: #d1d5db;"></div>
+                                        </div>
+                                        <div class="h-5"></div>
+                                        {{-- Month label --}}
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+                                            {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <div class="border-t-2 border-gray-300 dark:border-gray-600 mt-1"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center py-4 text-gray-500">
+                        <p class="text-sm">No income or expense data recorded for the last 12 months</p>
+                    </div>
+                    
+                    {{-- Legend --}}
+                    <div class="flex justify-center gap-6 mt-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #16a34a, #22c55e);"></div>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Income</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #dc2626, #ef4444);"></div>
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
                         </div>
                     </div>
                 @else
