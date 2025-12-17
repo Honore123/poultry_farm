@@ -3,12 +3,14 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Mail\TwoFactorCodeMail;
 use App\Notifications\ResetPasswordNotification;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\Permission\Traits\HasRoles;
@@ -57,6 +59,50 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Generate and send a two-factor authentication code.
+     */
+    public function generateTwoFactorCode(): string
+    {
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        $this->update([
+            'two_factor_code' => $code,
+            'two_factor_expires_at' => now()->addMinutes(10),
+        ]);
+
+        Mail::to($this->email)->send(new TwoFactorCodeMail($this, $code));
+
+        return $code;
+    }
+
+    /**
+     * Verify the two-factor authentication code.
+     */
+    public function verifyTwoFactorCode(string $code): bool
+    {
+        if ($this->two_factor_code !== $code) {
+            return false;
+        }
+
+        if ($this->two_factor_expires_at && $this->two_factor_expires_at->isPast()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Clear the two-factor authentication code.
+     */
+    public function clearTwoFactorCode(): void
+    {
+        $this->update([
+            'two_factor_code' => null,
+            'two_factor_expires_at' => null,
+        ]);
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -65,6 +111,8 @@ class User extends Authenticatable implements FilamentUser
         'name',
         'email',
         'password',
+        'two_factor_code',
+        'two_factor_expires_at',
     ];
 
     /**
@@ -75,6 +123,7 @@ class User extends Authenticatable implements FilamentUser
     protected $hidden = [
         'password',
         'remember_token',
+        'two_factor_code',
     ];
 
     /**
@@ -87,6 +136,7 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'two_factor_expires_at' => 'datetime',
         ];
     }
 }
