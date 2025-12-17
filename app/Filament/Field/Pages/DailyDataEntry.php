@@ -57,7 +57,7 @@ class DailyDataEntry extends Page implements HasForms
             'eggs_dirty' => 0,
             'eggs_soft' => 0,
             'eggs_small' => 0,
-            'kg_given' => null,
+            'feed_entries' => [['inventory_lot_id' => null, 'kg_given' => null, 'feed_item_id' => null, 'available_stock' => null]],
             'liters_used' => null,
             'mortality_count' => null,
             'mortality_cause' => null,
@@ -172,17 +172,28 @@ class DailyDataEntry extends Page implements HasForms
                     ]),
 
                 Forms\Components\Section::make('🌾 Feed Consumption')
-                    ->description('Record today\'s feed given - will be deducted from inventory')
+                    ->description('Record today\'s feed given - will be deducted from inventory. Add multiple entries if mixing feeds.')
                     ->icon('heroicon-o-beaker')
                     ->collapsible()
                     ->schema([
-                        Forms\Components\Grid::make(2)
+                        Forms\Components\Repeater::make('feed_entries')
+                            ->label('')
                             ->schema([
                                 Forms\Components\Select::make('inventory_lot_id')
                                     ->label('Select Feed Lot')
-                                    ->options(function () {
+                                    ->options(function (Get $get) {
+                                        // Get all selected lot IDs from other entries
+                                        $allEntries = $get('../../feed_entries') ?? [];
+                                        $currentLotId = $get('inventory_lot_id');
+                                        $selectedLotIds = collect($allEntries)
+                                            ->pluck('inventory_lot_id')
+                                            ->filter()
+                                            ->reject(fn ($id) => $id == $currentLotId)
+                                            ->toArray();
+
                                         return InventoryLot::whereHas('item', fn ($q) => $q->where('category', 'feed'))
                                             ->where('qty_on_hand', '>', 0)
+                                            ->whereNotIn('id', $selectedLotIds)
                                             ->with('item')
                                             ->get()
                                             ->mapWithKeys(fn ($lot) => [
@@ -190,6 +201,7 @@ class DailyDataEntry extends Page implements HasForms
                                             ]);
                                     })
                                     ->searchable()
+                                    ->required()
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set) {
                                         if ($state) {
@@ -203,8 +215,7 @@ class DailyDataEntry extends Page implements HasForms
                                             $set('available_stock', null);
                                         }
                                     })
-                                    ->helperText('Select from available feed inventory')
-                                    ->columnSpan(1),
+                                    ->helperText('Select from available feed inventory'),
 
                                 Forms\Components\TextInput::make('kg_given')
                                     ->label('Feed Given (kg)')
@@ -214,16 +225,25 @@ class DailyDataEntry extends Page implements HasForms
                                     ->step(0.01)
                                     ->suffix('kg')
                                     ->placeholder('Enter kg')
+                                    ->required()
                                     ->extraInputAttributes(['class' => 'text-xl font-bold'])
                                     ->helperText(fn (Get $get) => $get('available_stock') 
                                         ? 'Available: ' . number_format($get('available_stock'), 1) . ' kg'
                                         : 'Select a feed lot first')
-                                    ->live(debounce: 500)
-                                    ->columnSpan(1),
-                            ]),
+                                    ->live(debounce: 500),
 
-                        Forms\Components\Hidden::make('feed_item_id'),
-                        Forms\Components\Hidden::make('available_stock'),
+                                Forms\Components\Hidden::make('feed_item_id'),
+                                Forms\Components\Hidden::make('available_stock'),
+                            ])
+                            ->columns(2)
+                            ->defaultItems(1)
+                            ->addActionLabel('Add Another Feed')
+                            ->reorderable(false)
+                            ->itemLabel(fn (array $state): ?string => 
+                                isset($state['inventory_lot_id']) && $state['inventory_lot_id'] 
+                                    ? InventoryLot::find($state['inventory_lot_id'])?->item?->name ?? 'Feed Entry'
+                                    : 'Feed Entry'
+                            ),
 
                         Forms\Components\Placeholder::make('feed_status')
                             ->label('')
@@ -382,7 +402,11 @@ class DailyDataEntry extends Page implements HasForms
                                     ->label('Distributed')
                                     ->content(function (Get $get) {
                                         $recorded = floatval($get('feed_distributed') ?? 0);
-                                        $entering = floatval($get('kg_given') ?? 0);
+                                        $entering = 0;
+                                        $feedEntries = $get('feed_entries') ?? [];
+                                        foreach ($feedEntries as $entry) {
+                                            $entering += floatval($entry['kg_given'] ?? 0);
+                                        }
                                         return number_format($recorded + $entering, 1) . ' kg';
                                     }),
                                 Forms\Components\Placeholder::make('feed_received_display')
@@ -402,7 +426,11 @@ class DailyDataEntry extends Page implements HasForms
                                     ->label('Closing Stock')
                                     ->content(function (Get $get) {
                                         $closingStock = floatval($get('feed_closing_stock') ?? 0);
-                                        $feedEntering = floatval($get('kg_given') ?? 0);
+                                        $feedEntering = 0;
+                                        $feedEntries = $get('feed_entries') ?? [];
+                                        foreach ($feedEntries as $entry) {
+                                            $feedEntering += floatval($entry['kg_given'] ?? 0);
+                                        }
                                         $feedOut = floatval($get('disposal_qty') ?? 0);
                                         $feedReceived = floatval($get('received_qty') ?? 0);
                                         return number_format($closingStock - $feedEntering - $feedOut + $feedReceived, 1) . ' kg';
@@ -631,11 +659,13 @@ class DailyDataEntry extends Page implements HasForms
             $hasData = true;
         }
 
-        // Save feed if provided
-        if (!empty($data['kg_given']) && $data['kg_given'] > 0 && !empty($data['inventory_lot_id'])) {
-            $this->saveFeed($data);
-            $savedItems[] = 'feed';
-            $hasData = true;
+        // Save feed entries if provided
+        if (!empty($data['feed_entries'])) {
+            $feedCount = $this->saveFeedEntries($data);
+            if ($feedCount > 0) {
+                $savedItems[] = "{$feedCount} feed entry(s)";
+                $hasData = true;
+            }
         }
 
         // Save water if provided
@@ -694,10 +724,7 @@ class DailyDataEntry extends Page implements HasForms
             ->send();
 
         // Clear entry fields after saving
-        $this->data['kg_given'] = null;
-        $this->data['inventory_lot_id'] = null;
-        $this->data['feed_item_id'] = null;
-        $this->data['available_stock'] = null;
+        $this->data['feed_entries'] = [['inventory_lot_id' => null, 'kg_given' => null, 'feed_item_id' => null, 'available_stock' => null]];
         $this->data['mortality_count'] = null;
         $this->data['mortality_cause'] = null;
         $this->data['received_lot_id'] = null;
@@ -737,49 +764,71 @@ class DailyDataEntry extends Page implements HasForms
         $this->eggsSaved = true;
     }
 
-    protected function saveFeed(array $data): void
+    protected function saveFeedEntries(array $data): int
     {
-        $lotId = $data['inventory_lot_id'];
-        $kgGiven = floatval($data['kg_given']);
+        $savedCount = 0;
+        $totalKg = 0;
 
-        DB::transaction(function () use ($data, $lotId, $kgGiven) {
-            DailyFeedIntake::create([
-                'batch_id' => $data['batch_id'],
-                'date' => $data['date'],
-                'feed_item_id' => $data['feed_item_id'],
-                'kg_given' => $kgGiven,
-            ]);
+        foreach ($data['feed_entries'] as $entry) {
+            if (empty($entry['inventory_lot_id']) || empty($entry['kg_given']) || $entry['kg_given'] <= 0) {
+                continue;
+            }
 
-            $lot = InventoryLot::lockForUpdate()->find($lotId);
-            
-            if ($lot && $lot->qty_on_hand >= $kgGiven) {
-                $lot->qty_on_hand -= $kgGiven;
-                $lot->save();
-                
-                InventoryMovement::create([
-                    'lot_id' => $lotId,
-                    'ts' => $data['date'],
-                    'direction' => 'out',
-                    'qty' => $kgGiven,
-                    'reference' => 'feed_consumption',
+            $lotId = $entry['inventory_lot_id'];
+            $kgGiven = floatval($entry['kg_given']);
+            $feedItemId = $entry['feed_item_id'] ?? null;
+
+            // If feed_item_id wasn't set, get it from the lot
+            if (!$feedItemId) {
+                $lot = InventoryLot::find($lotId);
+                $feedItemId = $lot?->item_id;
+            }
+
+            DB::transaction(function () use ($data, $lotId, $kgGiven, $feedItemId, &$savedCount, &$totalKg) {
+                DailyFeedIntake::create([
                     'batch_id' => $data['batch_id'],
+                    'date' => $data['date'],
+                    'feed_item_id' => $feedItemId,
+                    'kg_given' => $kgGiven,
                 ]);
 
-                Notification::make()
-                    ->title('Inventory updated')
-                    ->body("{$kgGiven} kg deducted. Remaining: {$lot->qty_on_hand} kg")
-                    ->info()
-                    ->send();
-            } else {
-                Notification::make()
-                    ->title('Inventory warning')
-                    ->body('Could not deduct from inventory - insufficient stock')
-                    ->warning()
-                    ->send();
-            }
-        });
+                $lot = InventoryLot::lockForUpdate()->find($lotId);
+                
+                if ($lot && $lot->qty_on_hand >= $kgGiven) {
+                    $lot->qty_on_hand -= $kgGiven;
+                    $lot->save();
+                    
+                    InventoryMovement::create([
+                        'lot_id' => $lotId,
+                        'ts' => $data['date'],
+                        'direction' => 'out',
+                        'qty' => $kgGiven,
+                        'reference' => 'feed_consumption',
+                        'batch_id' => $data['batch_id'],
+                    ]);
 
-        $this->feedSaved = true;
+                    $savedCount++;
+                    $totalKg += $kgGiven;
+                } else {
+                    Notification::make()
+                        ->title('Inventory warning')
+                        ->body("Could not deduct {$kgGiven} kg from {$lot?->item?->name} - insufficient stock")
+                        ->warning()
+                        ->send();
+                }
+            });
+        }
+
+        if ($savedCount > 0) {
+            $this->feedSaved = true;
+            Notification::make()
+                ->title('Feed inventory updated')
+                ->body("Total: {$totalKg} kg deducted from {$savedCount} feed lot(s)")
+                ->info()
+                ->send();
+        }
+
+        return $savedCount;
     }
 
     protected function saveWater(array $data): void
