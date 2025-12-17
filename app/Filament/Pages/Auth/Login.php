@@ -26,6 +26,14 @@ class Login extends BaseLogin
             $this->throwFailureValidationException();
         }
 
+        // Check if 2FA is enabled
+        if (! config('auth.two_factor_enabled', true)) {
+            // 2FA is disabled, proceed with normal login
+            session()->regenerate();
+
+            return app(LoginResponse::class);
+        }
+
         $user = Filament::auth()->user();
 
         // Log the user out temporarily - they need to verify 2FA first
