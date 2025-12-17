@@ -49,6 +49,9 @@ class RolesAndPermissionsSeeder extends Seeder
             // Settings
             'view_feed_intake_targets', 'create_feed_intake_targets', 'edit_feed_intake_targets', 'delete_feed_intake_targets',
 
+            // Activity Logs (admin only)
+            'view_activity_logs',
+
             // Reports & Dashboard
             'view_reports', 'export_reports',
             'view_dashboard',
