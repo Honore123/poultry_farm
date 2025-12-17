@@ -4,8 +4,11 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SalesOrderResource\Pages;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderItem;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -29,10 +32,12 @@ class SalesOrderResource extends Resource
                         Forms\Components\Select::make('customer_id')
                             ->relationship('customer', 'name')
                             ->label('Customer')
-                            ->searchable(),
+                            ->searchable()
+                            ->preload(),
                         Forms\Components\DatePicker::make('order_date')
                             ->required()
-                            ->default(now()),
+                            ->default(now())
+                            ->native(false),
                         Forms\Components\Select::make('status')
                             ->options([
                                 'draft' => 'Draft',
@@ -52,21 +57,64 @@ class SalesOrderResource extends Resource
                         Forms\Components\Repeater::make('items')
                             ->relationship()
                             ->schema([
-                                Forms\Components\TextInput::make('product')
+                                Forms\Components\Select::make('product')
+                                    ->options([
+                                        'Eggs' => 'Eggs',
+                                        'Manure' => 'Manure',
+                                    ])
                                     ->required()
-                                    ->placeholder('e.g., Tray of 30 eggs'),
+                                    ->live()
+                                    ->afterStateUpdated(function (Set $set, ?string $state) {
+                                        if ($state === 'Eggs') {
+                                            $set('uom', 'tray');
+                                        } elseif ($state === 'Manure') {
+                                            $set('uom', 'kg');
+                                        }
+                                    }),
                                 Forms\Components\TextInput::make('qty')
                                     ->numeric()
                                     ->required()
-                                    ->minValue(1),
-                                Forms\Components\TextInput::make('uom')
+                                    ->minValue(1)
+                                    ->live(onBlur: true)
+                                    ->helperText(function (Get $get) {
+                                        $product = $get('product');
+                                        $qty = (int) $get('qty');
+                                        $uom = strtolower($get('uom') ?? '');
+                                        
+                                        if ($product === 'Eggs' && ($uom === 'tray' || $uom === 'trays') && $qty > 0) {
+                                            $eggs = $qty * SalesOrderItem::EGGS_PER_TRAY;
+                                            return "= {$eggs} eggs";
+                                        }
+                                        return null;
+                                    }),
+                                Forms\Components\Select::make('uom')
+                                    ->options(function (Get $get) {
+                                        $product = $get('product');
+                                        if ($product === 'Eggs') {
+                                            return [
+                                                'tray' => 'Tray (30 eggs)',
+                                                'piece' => 'Piece (individual)',
+                                            ];
+                                        } elseif ($product === 'Manure') {
+                                            return [
+                                                'kg' => 'Kilogram',
+                                                'bag' => 'Bag',
+                                            ];
+                                        }
+                                        return [
+                                            'tray' => 'Tray',
+                                            'piece' => 'Piece',
+                                            'kg' => 'Kilogram',
+                                            'bag' => 'Bag',
+                                        ];
+                                    })
                                     ->required()
-                                    ->placeholder('tray, piece, kg'),
+                                    ->live(),
                                 Forms\Components\TextInput::make('unit_price')
                                     ->numeric()
                                     ->required()
                                     ->minValue(0)
-                                    ->prefix('RWF '),
+                                    ->prefix('RWF'),
                             ])
                             ->columns(4)
                             ->defaultItems(1)
@@ -100,6 +148,12 @@ class SalesOrderResource extends Resource
                 Tables\Columns\TextColumn::make('items_count')
                     ->counts('items')
                     ->label('Items'),
+                Tables\Columns\TextColumn::make('total_eggs')
+                    ->label('Eggs')
+                    ->getStateUsing(fn (SalesOrder $record) => $record->total_eggs)
+                    ->formatStateUsing(fn ($state) => $state > 0 ? number_format($state) : '-')
+                    ->badge()
+                    ->color(fn ($state) => $state > 0 ? 'success' : 'gray'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
