@@ -15,8 +15,7 @@ class CreateRecordFeed extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        // Remove fields not in the model
-        unset($data['inventory_lot_id']);
+        // Keep inventory_lot_id, just remove available_stock
         unset($data['available_stock']);
         
         return $data;
@@ -24,7 +23,7 @@ class CreateRecordFeed extends CreateRecord
 
     protected function afterCreate(): void
     {
-        $lotId = $this->data['inventory_lot_id'] ?? null;
+        $lotId = $this->record->inventory_lot_id;
         $kgGiven = $this->record->kg_given;
         
         if ($lotId) {

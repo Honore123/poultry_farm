@@ -201,7 +201,6 @@ class DailyDataEntry extends Page implements HasForms
                                             ]);
                                     })
                                     ->searchable()
-                                    ->required()
                                     ->live()
                                     ->afterStateUpdated(function ($state, Set $set) {
                                         if ($state) {
@@ -225,7 +224,6 @@ class DailyDataEntry extends Page implements HasForms
                                     ->step(0.01)
                                     ->suffix('kg')
                                     ->placeholder('Enter kg')
-                                    ->required()
                                     ->extraInputAttributes(['class' => 'text-xl font-bold'])
                                     ->helperText(fn (Get $get) => $get('available_stock') 
                                         ? 'Available: ' . number_format($get('available_stock'), 1) . ' kg'
@@ -768,9 +766,34 @@ class DailyDataEntry extends Page implements HasForms
     {
         $savedCount = 0;
         $totalKg = 0;
+        $hasInvalidEntries = false;
 
         foreach ($data['feed_entries'] as $entry) {
-            if (empty($entry['inventory_lot_id']) || empty($entry['kg_given']) || $entry['kg_given'] <= 0) {
+            // Check if entry has partial data (one field filled, other empty)
+            $hasLot = !empty($entry['inventory_lot_id']);
+            $hasKg = !empty($entry['kg_given']) && $entry['kg_given'] > 0;
+            
+            if ($hasLot && !$hasKg) {
+                $hasInvalidEntries = true;
+                Notification::make()
+                    ->title('Feed entry incomplete')
+                    ->body('Please enter the kg amount for the selected feed lot')
+                    ->warning()
+                    ->send();
+                continue;
+            }
+            
+            if (!$hasLot && $hasKg) {
+                $hasInvalidEntries = true;
+                Notification::make()
+                    ->title('Feed entry incomplete')
+                    ->body('Please select a feed lot for the entered amount')
+                    ->warning()
+                    ->send();
+                continue;
+            }
+            
+            if (!$hasLot || !$hasKg) {
                 continue;
             }
 
@@ -789,6 +812,7 @@ class DailyDataEntry extends Page implements HasForms
                     'batch_id' => $data['batch_id'],
                     'date' => $data['date'],
                     'feed_item_id' => $feedItemId,
+                    'inventory_lot_id' => $lotId,
                     'kg_given' => $kgGiven,
                 ]);
 
@@ -1018,6 +1042,22 @@ class DailyDataEntry extends Page implements HasForms
         $feedOut = floatval($data['feed_out_stock'] ?? 0);
         $closingStock = floatval($data['feed_closing_stock'] ?? 0);
         
+        // Get detailed feed breakdown for the day
+        $feedDetails = DailyFeedIntake::where('batch_id', $batch->id)
+            ->whereDate('date', $date)
+            ->with('feedItem')
+            ->get()
+            ->groupBy(fn ($intake) => $intake->feedItem?->name ?? 'Unknown Feed')
+            ->map(fn ($group) => $group->sum('kg_given'));
+        
+        // Get closing stock breakdown by feed type
+        $closingStockDetails = InventoryLot::whereHas('item', fn ($q) => $q->where('category', 'feed'))
+            ->where('qty_on_hand', '>', 0)
+            ->with('item')
+            ->get()
+            ->groupBy(fn ($lot) => $lot->item?->name ?? 'Unknown Feed')
+            ->map(fn ($group) => $group->sum('qty_on_hand'));
+        
         // Get water usage for the day
         $waterUsed = DailyWaterUsage::where('batch_id', $batch->id)
             ->whereDate('date', $date)
@@ -1070,18 +1110,52 @@ class DailyDataEntry extends Page implements HasForms
         $message .= "-Mortalities: {$mortalityToday}\n\n";
         $message .= "-Remaining hens:{$remainingHens}\n\n";
         
-        // Add eggs production if available
+        // Add eggs production with breakdown if available
         if ($eggsToday) {
-            $message .= "-Eggs collected: {$eggsToday->eggs_total}\n\n";
+            $message .= "-Eggs collected: {$eggsToday->eggs_total}\n";
+            $eggBreakdown = [];
+            if ($eggsToday->eggs_cracked > 0) {
+                $eggBreakdown[] = "Cracked: {$eggsToday->eggs_cracked}";
+            }
+            if ($eggsToday->eggs_dirty > 0) {
+                $eggBreakdown[] = "Dirty: {$eggsToday->eggs_dirty}";
+            }
+            if ($eggsToday->eggs_soft > 0) {
+                $eggBreakdown[] = "Soft: {$eggsToday->eggs_soft}";
+            }
+            if ($eggsToday->eggs_small > 0) {
+                $eggBreakdown[] = "Small: {$eggsToday->eggs_small}";
+            }
+            if (!empty($eggBreakdown)) {
+                $message .= "   (" . implode(', ', $eggBreakdown) . ")\n";
+            }
+            $message .= "\n";
         }
         
         $message .= "----------------------------------------------------- plus\n\n";
         
         $message .= "👉🏿initial stock:" . number_format($feedInitial, 0) . "kgs\n\n";
-        $message .= "👉🏿Feed distributed: " . number_format($feedDistributed, 0) . "kgs\n\n";
+        
+        // Build feed distributed breakdown
+        $message .= "👉🏿Feed distributed: " . number_format($feedDistributed, 0) . "kgs\n";
+        if ($feedDetails->isNotEmpty()) {
+            foreach ($feedDetails as $feedName => $kgAmount) {
+                $message .= "   -{$feedName}: " . number_format($kgAmount, 1) . " kg\n";
+            }
+        }
+        $message .= "\n";
+        
         $message .= "👉🏿Feed out stock:" . number_format($feedOut, 0) . "kgs\n\n";
         $message .= "👉🏿received stock:" . number_format($feedReceived, 0) . "kgs\n\n";
-        $message .= "👉🏿closing stock:" . number_format($closingStock, 0) . "\n\n\n";
+        
+        // Build closing stock breakdown
+        $message .= "👉🏿closing stock:" . number_format($closingStock, 0) . "kgs\n";
+        if ($closingStockDetails->isNotEmpty()) {
+            foreach ($closingStockDetails as $feedName => $kgAmount) {
+                $message .= "   -{$feedName}: " . number_format($kgAmount, 1) . " kg\n";
+            }
+        }
+        $message .= "\n\n";
         
         $message .= "3. Water distributed: " . number_format($waterUsed, 0) . "\n\n";
         

@@ -24,6 +24,7 @@ class DailyFeedIntake extends Model
         'batch_id',
         'date',
         'feed_item_id',
+        'inventory_lot_id',
         'kg_given',
     ];
 
@@ -40,6 +41,11 @@ class DailyFeedIntake extends Model
     public function feedItem(): BelongsTo
     {
         return $this->belongsTo(InventoryItem::class, 'feed_item_id');
+    }
+
+    public function inventoryLot(): BelongsTo
+    {
+        return $this->belongsTo(InventoryLot::class);
     }
 }
 

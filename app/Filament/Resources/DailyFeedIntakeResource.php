@@ -4,8 +4,11 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\DailyFeedIntakeResource\Pages;
 use App\Models\DailyFeedIntake;
+use App\Models\InventoryLot;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -38,21 +41,46 @@ class DailyFeedIntakeResource extends Resource
                             ->maxDate(now())
                             ->native(false)
                             ->helperText('Cannot select future dates'),
-                        Forms\Components\Select::make('feed_item_id')
-                            ->relationship('feedItem', 'name', fn ($query) => $query->where('category', 'feed'))
-                            ->label('Feed Type')
+                        Forms\Components\Select::make('inventory_lot_id')
+                            ->label('Feed Lot (Inventory)')
+                            ->options(function () {
+                                return InventoryLot::whereHas('item', fn ($q) => $q->where('category', 'feed'))
+                                    ->where('qty_on_hand', '>', 0)
+                                    ->with('item')
+                                    ->get()
+                                    ->mapWithKeys(fn ($lot) => [
+                                        $lot->id => "{$lot->item->name} - {$lot->lot_code} ({$lot->qty_on_hand} kg available)"
+                                    ]);
+                            })
                             ->searchable()
-                            ->preload()
-                            ->helperText('Select from inventory feed items'),
+                            ->required()
+                            ->live()
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                if ($state) {
+                                    $lot = InventoryLot::find($state);
+                                    if ($lot) {
+                                        $set('feed_item_id', $lot->item_id);
+                                        $set('available_stock', $lot->qty_on_hand);
+                                    }
+                                } else {
+                                    $set('feed_item_id', null);
+                                    $set('available_stock', null);
+                                }
+                            })
+                            ->helperText('Select from available feed inventory - quantity will be deducted'),
+                        Forms\Components\Hidden::make('feed_item_id'),
+                        Forms\Components\Hidden::make('available_stock'),
                         Forms\Components\TextInput::make('kg_given')
                             ->label('Amount Given')
                             ->numeric()
                             ->required()
                             ->minValue(0.01)
-                            ->maxValue(10000)
+                            ->maxValue(fn (Get $get) => $get('available_stock') ?: 10000)
                             ->step(0.01)
                             ->suffix('kg')
-                            ->helperText('Between 0.01 and 10,000 kg'),
+                            ->helperText(fn (Get $get) => $get('available_stock') 
+                                ? 'Available: ' . number_format($get('available_stock'), 1) . ' kg'
+                                : 'Select a feed lot first'),
                     ])->columns(2),
             ]);
     }
@@ -85,10 +113,37 @@ class DailyFeedIntakeResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->before(function (DailyFeedIntake $record) {
+                        // Find and restore inventory
+                        $movement = \App\Models\InventoryMovement::where('batch_id', $record->batch_id)
+                            ->where('reference', 'feed_consumption')
+                            ->whereDate('ts', $record->date)
+                            ->where('qty', $record->kg_given)
+                            ->first();
+                        
+                        if ($movement) {
+                            \Illuminate\Support\Facades\DB::transaction(function () use ($movement, $record) {
+                                $lot = InventoryLot::lockForUpdate()->find($movement->lot_id);
+                                
+                                if ($lot) {
+                                    $lot->qty_on_hand += $record->kg_given;
+                                    $lot->save();
+                                    
+                                    $movement->delete();
+                                    
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Inventory restored')
+                                        ->body("{$record->kg_given} kg restored to {$lot->item->name}")
+                                        ->success()
+                                        ->send();
+                                }
+                            });
+                        }
+                    }),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                // Bulk delete disabled to ensure proper inventory management
             ])
             ->defaultSort('date', 'desc');
     }

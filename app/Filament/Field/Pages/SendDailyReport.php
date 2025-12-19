@@ -307,6 +307,22 @@ class SendDailyReport extends Page implements HasForms
         $feedOut = floatval($data['feed_out_stock'] ?? 0);
         $closingStock = floatval($data['feed_closing_stock'] ?? 0);
         
+        // Get detailed feed breakdown for the day
+        $feedDetails = DailyFeedIntake::where('batch_id', $batch->id)
+            ->whereDate('date', $date)
+            ->with('feedItem')
+            ->get()
+            ->groupBy(fn ($intake) => $intake->feedItem?->name ?? 'Unknown Feed')
+            ->map(fn ($group) => $group->sum('kg_given'));
+        
+        // Get closing stock breakdown by feed type
+        $closingStockDetails = InventoryLot::whereHas('item', fn ($q) => $q->where('category', 'feed'))
+            ->where('qty_on_hand', '>', 0)
+            ->with('item')
+            ->get()
+            ->groupBy(fn ($lot) => $lot->item?->name ?? 'Unknown Feed')
+            ->map(fn ($group) => $group->sum('qty_on_hand'));
+        
         // Get water usage for the day
         $waterUsed = DailyWaterUsage::where('batch_id', $batch->id)
             ->whereDate('date', $date)
@@ -396,10 +412,27 @@ class SendDailyReport extends Page implements HasForms
         $message .= "----------------------------------------------------- plus\n\n";
         
         $message .= "👉🏿initial stock:" . number_format($feedInitial, 0) . "kgs\n\n";
-        $message .= "👉🏿Feed distributed: " . number_format($feedDistributed, 0) . "kgs\n\n";
+        
+        // Build feed distributed breakdown
+        $message .= "👉🏿Feed distributed: " . number_format($feedDistributed, 0) . "kgs\n";
+        if ($feedDetails->isNotEmpty()) {
+            foreach ($feedDetails as $feedName => $kgAmount) {
+                $message .= "   -{$feedName}: " . number_format($kgAmount, 1) . " kg\n";
+            }
+        }
+        $message .= "\n";
+        
         $message .= "👉🏿Feed out stock:" . number_format($feedOut, 0) . "kgs\n\n";
         $message .= "👉🏿received stock:" . number_format($feedReceived, 0) . "kgs\n\n";
-        $message .= "👉🏿closing stock:" . number_format($closingStock, 0) . "\n\n\n";
+        
+        // Build closing stock breakdown
+        $message .= "👉🏿closing stock:" . number_format($closingStock, 0) . "kgs\n";
+        if ($closingStockDetails->isNotEmpty()) {
+            foreach ($closingStockDetails as $feedName => $kgAmount) {
+                $message .= "   -{$feedName}: " . number_format($kgAmount, 1) . " kg\n";
+            }
+        }
+        $message .= "\n\n";
         
         $message .= "3. Water distributed: " . number_format($waterUsed, 0) . "\n\n";
         
