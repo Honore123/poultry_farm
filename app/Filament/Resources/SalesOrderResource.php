@@ -12,6 +12,7 @@ use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class SalesOrderResource extends Resource
 {
@@ -149,11 +150,21 @@ class SalesOrderResource extends Resource
                     ->counts('items')
                     ->label('Items'),
                 Tables\Columns\TextColumn::make('total_eggs')
-                    ->label('Eggs')
+                    ->label('Eggs Sold')
                     ->getStateUsing(fn (SalesOrder $record) => $record->total_eggs)
                     ->formatStateUsing(fn ($state) => $state > 0 ? number_format($state) : '-')
                     ->badge()
                     ->color(fn ($state) => $state > 0 ? 'success' : 'gray'),
+                Tables\Columns\TextColumn::make('total_amount')
+                    ->label('Total Amount')
+                    ->getStateUsing(fn (SalesOrder $record) => $record->items->sum(fn ($item) => $item->qty * $item->unit_price))
+                    ->formatStateUsing(fn ($state) => 'RWF ' . number_format($state, 0))
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query->withSum('items', \Illuminate\Support\Facades\DB::raw('qty * unit_price'))
+                            ->orderBy('items_sum_qty__unit_price', $direction);
+                    })
+                    ->color('success')
+                    ->weight('bold'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

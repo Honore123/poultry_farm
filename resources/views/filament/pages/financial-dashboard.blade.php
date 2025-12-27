@@ -1,4 +1,7 @@
 <x-filament-panels::page>
+    {{-- Chart.js CDN --}}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <form wire:submit.prevent>
         {{ $this->form }}
     </form>
@@ -71,170 +74,209 @@
                 
                 @php
                     $hasAnyData = false;
-                    $maxValue = 1;
-                    $chartHeight = 180; // pixels
                     if (count($breakeven['monthlyData']) > 0) {
                         $incomeValues = array_column($breakeven['monthlyData'], 'income');
                         $expenseValues = array_column($breakeven['monthlyData'], 'expenses');
                         $maxIncome = !empty($incomeValues) ? max($incomeValues) : 0;
                         $maxExpense = !empty($expenseValues) ? max($expenseValues) : 0;
-                        $maxValue = max($maxIncome, $maxExpense, 1);
                         $hasAnyData = ($maxIncome > 0 || $maxExpense > 0);
+                        
+                        // Prepare chart data
+                        $monthLabels = array_column($breakeven['monthlyData'], 'label');
+                        $monthLabelsFormatted = array_map(fn($d) => \Carbon\Carbon::parse($d)->format('M Y'), $monthLabels);
+                        $netProfitValues = array_column($breakeven['monthlyData'], 'netProfit');
                     }
                 @endphp
                 
                 @if(count($breakeven['monthlyData']) > 0 && $hasAnyData)
-                    <div class="overflow-x-auto">
-                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 70 }}px">
-                            {{-- Chart Bars --}}
-                            <div class="flex items-end gap-2">
-                                @foreach($breakeven['monthlyData'] as $index => $month)
-                                    @php
-                                        // Calculate height in pixels
-                                        $incomeHeightPx = $maxValue > 0 ? round(($month['income'] / $maxValue) * $chartHeight) : 0;
-                                        $expenseHeightPx = $maxValue > 0 ? round(($month['expenses'] / $maxValue) * $chartHeight) : 0;
-                                        // Minimum height of 6px for non-zero values
-                                        $incomeHeightPx = $month['income'] > 0 ? max($incomeHeightPx, 6) : 0;
-                                        $expenseHeightPx = $month['expenses'] > 0 ? max($expenseHeightPx, 6) : 0;
-                                        $isProfit = $month['netProfit'] >= 0;
-                                    @endphp
-                                    <div 
-                                        class="flex-1 flex flex-col items-center relative" 
-                                        style="min-width: 50px;"
-                                        x-data="{ showTooltip: false }"
-                                        @mouseenter="showTooltip = true"
-                                        @mouseleave="showTooltip = false"
-                                    >
-                                        {{-- Bars container with tooltip --}}
-                                        <div class="flex gap-1 items-end w-full justify-center relative" style="height: {{ $chartHeight }}px;">
-                                            {{-- Tooltip on hover using Alpine.js --}}
-                                            <div 
-                                                x-show="showTooltip" 
-                                                x-transition:enter="transition ease-out duration-100"
-                                                x-transition:enter-start="opacity-0 transform scale-95"
-                                                x-transition:enter-end="opacity-100 transform scale-100"
-                                                x-transition:leave="transition ease-in duration-75"
-                                                x-transition:leave-start="opacity-100 transform scale-100"
-                                                x-transition:leave-end="opacity-0 transform scale-95"
-                                                class="absolute left-1/2 bottom-full mb-2" 
-                                                style="transform: translateX(-50%); z-index: 9999;"
-                                            >
-                                                <div class="bg-gray-900 text-white text-xs rounded-lg py-2 px-3 shadow-xl whitespace-nowrap" style="min-width: 180px;">
-                                                    <p class="font-bold mb-2 text-center border-b border-gray-600 pb-1">{{ $month['label'] }}</p>
-                                                    <div class="space-y-1">
-                                                        <p class="flex justify-between gap-4">
-                                                            <span style="color: #4ade80;">● Income:</span>
-                                                            <span class="font-medium">RWF {{ number_format($month['income'], 0) }}</span>
-                                                        </p>
-                                                        <p class="flex justify-between gap-4">
-                                                            <span style="color: #f87171;">● Expenses:</span>
-                                                            <span class="font-medium">RWF {{ number_format($month['expenses'], 0) }}</span>
-                                                        </p>
-                                                        <p class="flex justify-between gap-4 pt-1 border-t border-gray-600 mt-1" style="color: {{ $isProfit ? '#86efac' : '#fca5a5' }};">
-                                                            <span>{{ $isProfit ? '↑ Profit:' : '↓ Loss:' }}</span>
-                                                            <span class="font-bold">RWF {{ number_format(abs($month['netProfit']), 0) }}</span>
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                {{-- Arrow pointer --}}
-                                                <div style="position: absolute; left: 50%; transform: translateX(-50%); bottom: -6px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid #111827;"></div>
+                    <div class="w-full" style="height: 320px;">
+                        <canvas id="monthlyIncomeExpenseChart"></canvas>
                                             </div>
                                             
-                                            {{-- Income bar (Green) --}}
-                                            <div 
-                                                class="rounded-t cursor-pointer transition-all hover:opacity-80" 
-                                                style="width: 20px; height: {{ $incomeHeightPx }}px; background: linear-gradient(to top, #16a34a, #22c55e);"
-                                            ></div>
-                                            {{-- Expense bar (Red) --}}
-                                            <div 
-                                                class="rounded-t cursor-pointer transition-all hover:opacity-80" 
-                                                style="width: 20px; height: {{ $expenseHeightPx }}px; background: linear-gradient(to top, #dc2626, #ef4444);"
-                                            ></div>
-                                        </div>
-                                        
-                                        {{-- Profit/Loss indicator --}}
-                                        @if($month['income'] > 0 || $month['expenses'] > 0)
-                                            <div class="mt-1">
-                                                @if($isProfit)
-                                                    <x-heroicon-m-arrow-up class="w-4 h-4 text-green-500" />
-                                                @else
-                                                    <x-heroicon-m-arrow-down class="w-4 h-4 text-red-500" />
-                                                @endif
-                                            </div>
-                                        @else
-                                            <div class="h-5"></div>
-                                        @endif
-                                        
-                                        {{-- Month label --}}
-                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                            {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
+                    <script>
+                        (function() {
+                            function waitForChartBreakeven(callback, maxAttempts = 50) {
+                                let attempts = 0;
+                                const check = function() {
+                                    if (typeof Chart !== 'undefined') {
+                                        callback();
+                                    } else if (attempts < maxAttempts) {
+                                        attempts++;
+                                        setTimeout(check, 100);
+                                    }
+                                };
+                                check();
+                            }
                             
-                            {{-- X-axis line --}}
-                            <div class="border-t-2 border-gray-300 dark:border-gray-600 mt-1"></div>
-                        </div>
-                    </div>
-                    
-                    {{-- Legend --}}
-                    <div class="flex flex-wrap justify-center gap-6 mt-6">
-                        <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #16a34a, #22c55e);"></div>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Income</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #dc2626, #ef4444);"></div>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <x-heroicon-m-arrow-up class="w-4 h-4 text-green-500" />
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Profit Month</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <x-heroicon-m-arrow-down class="w-4 h-4 text-red-500" />
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Loss Month</span>
-                        </div>
-                    </div>
+                            function initMonthlyIncomeExpenseChart() {
+                                const ctx = document.getElementById('monthlyIncomeExpenseChart');
+                                if (!ctx) return;
+                                
+                                // Destroy existing chart if it exists
+                                if (window.monthlyIncomeExpenseChart instanceof Chart) {
+                                    window.monthlyIncomeExpenseChart.destroy();
+                                }
+                                
+                                const isDark = document.documentElement.classList.contains('dark');
+                                const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                                const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+                                
+                                window.monthlyIncomeExpenseChart = new Chart(ctx, {
+                                    type: 'line',
+                                    data: {
+                                        labels: @json(array_values($monthLabelsFormatted)),
+                                        datasets: [
+                                            {
+                                                label: 'Income',
+                                                data: @json(array_values($incomeValues)),
+                                                borderColor: '#22c55e',
+                                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                                borderWidth: 3,
+                                                fill: true,
+                                                tension: 0.4,
+                                                pointRadius: 5,
+                                                pointHoverRadius: 8,
+                                                pointBackgroundColor: '#22c55e',
+                                                pointBorderColor: '#fff',
+                                                pointBorderWidth: 2
+                                            },
+                                            {
+                                                label: 'Expenses',
+                                                data: @json(array_values($expenseValues)),
+                                                borderColor: '#ef4444',
+                                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                                borderWidth: 3,
+                                                fill: true,
+                                                tension: 0.4,
+                                                pointRadius: 5,
+                                                pointHoverRadius: 8,
+                                                pointBackgroundColor: '#ef4444',
+                                                pointBorderColor: '#fff',
+                                                pointBorderWidth: 2
+                                            },
+                                            {
+                                                label: 'Net Profit/Loss',
+                                                data: @json(array_values($netProfitValues)),
+                                                borderColor: '#8b5cf6',
+                                                backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                                                borderWidth: 2,
+                                                borderDash: [5, 5],
+                                                fill: false,
+                                                tension: 0.4,
+                                                pointRadius: 4,
+                                                pointHoverRadius: 6,
+                                                pointBackgroundColor: '#8b5cf6',
+                                                pointBorderColor: '#fff',
+                                                pointBorderWidth: 2
+                                            }
+                                        ]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        interaction: {
+                                            mode: 'index',
+                                            intersect: false
+                                        },
+                                        plugins: {
+                                            legend: {
+                                                position: 'bottom',
+                                                labels: {
+                                                    color: textColor,
+                                                    usePointStyle: true,
+                                                    padding: 20,
+                                                    font: {
+                                                        size: 12
+                                                    }
+                                                }
+                                            },
+                                            tooltip: {
+                                                enabled: true,
+                                                backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                                                titleColor: isDark ? '#fff' : '#1f2937',
+                                                bodyColor: isDark ? '#d1d5db' : '#4b5563',
+                                                borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                                                borderWidth: 1,
+                                                padding: 12,
+                                                displayColors: true,
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        let label = context.dataset.label || '';
+                                                        if (label) {
+                                                            label += ': ';
+                                                        }
+                                                        if (context.parsed.y !== null) {
+                                                            const value = context.parsed.y;
+                                                            const prefix = context.dataset.label === 'Net Profit/Loss' && value < 0 ? '-' : '';
+                                                            label += prefix + 'RWF ' + new Intl.NumberFormat().format(Math.abs(value));
+                                                        }
+                                                        return label;
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        scales: {
+                                            x: {
+                                                grid: {
+                                                    color: gridColor,
+                                                    drawBorder: false
+                                                },
+                                                ticks: {
+                                                    color: textColor,
+                                                    maxRotation: 45,
+                                                    minRotation: 0
+                                                }
+                                            },
+                                            y: {
+                                                beginAtZero: true,
+                                                grid: {
+                                                    color: gridColor,
+                                                    drawBorder: false
+                                                },
+                                                ticks: {
+                                                    color: textColor,
+                                                    callback: function(value) {
+                                                        if (Math.abs(value) >= 1000000) {
+                                                            return 'RWF ' + (value / 1000000).toFixed(1) + 'M';
+                                                        } else if (Math.abs(value) >= 1000) {
+                                                            return 'RWF ' + (value / 1000).toFixed(0) + 'K';
+                                                        }
+                                                        return 'RWF ' + value;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            // Initialize on page load
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', function() {
+                                    waitForChartBreakeven(initMonthlyIncomeExpenseChart);
+                                });
+                            } else {
+                                waitForChartBreakeven(initMonthlyIncomeExpenseChart);
+                            }
+                            
+                            // Reinitialize on Livewire updates
+                            document.addEventListener('livewire:navigated', function() {
+                                waitForChartBreakeven(initMonthlyIncomeExpenseChart);
+                            });
+                            
+                            // Handle Livewire v3 morphing
+                            if (typeof Livewire !== 'undefined') {
+                                Livewire.hook('morph.updated', () => {
+                                    waitForChartBreakeven(initMonthlyIncomeExpenseChart);
+                                });
+                            }
+                        })();
+                    </script>
                 @elseif(count($breakeven['monthlyData']) > 0)
-                    {{-- Has months but no data - show empty state with month labels --}}
-                    <div class="overflow-x-auto">
-                        <div class="min-w-full" style="min-width: {{ count($breakeven['monthlyData']) * 70 }}px">
-                            <div class="flex items-end gap-2">
-                                @foreach($breakeven['monthlyData'] as $index => $month)
-                                    <div class="flex-1 flex flex-col items-center" style="min-width: 50px;">
-                                        {{-- Empty bar placeholder --}}
-                                        <div class="flex gap-1 items-end w-full justify-center" style="height: {{ $chartHeight }}px;">
-                                            <div class="rounded-t" style="width: 20px; height: 4px; background: #d1d5db;"></div>
-                                            <div class="rounded-t" style="width: 20px; height: 4px; background: #d1d5db;"></div>
-                                        </div>
-                                        <div class="h-5"></div>
-                                        {{-- Month label --}}
-                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-                                            {{ \Carbon\Carbon::parse($month['label'])->format('M') }}
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                            <div class="border-t-2 border-gray-300 dark:border-gray-600 mt-1"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="text-center py-4 text-gray-500">
+                    {{-- Has months but no data --}}
+                    <div class="text-center py-8 text-gray-500">
+                        <x-heroicon-o-chart-bar class="w-12 h-12 mx-auto mb-2 opacity-50" />
                         <p class="text-sm">No income or expense data recorded for the last 12 months</p>
-                    </div>
-                    
-                    {{-- Legend --}}
-                    <div class="flex justify-center gap-6 mt-4">
-                        <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #16a34a, #22c55e);"></div>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Income</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <div class="w-4 h-4 rounded" style="background: linear-gradient(to top, #dc2626, #ef4444);"></div>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
-                        </div>
                     </div>
                 @else
                     <div class="text-center py-8 text-gray-500">
@@ -553,63 +595,192 @@
             </div>
         </x-slot>
 
-        @if(count($data['revenueTrend']) > 0 || count($data['expenseTrend']) > 0)
             @php
+            // Cast values to float and prepare data
+            $revenueTrendData = array_map('floatval', $data['revenueTrend'] ?? []);
+            $expenseTrendData = array_map('floatval', $data['expenseTrend'] ?? []);
+            $hasData = count($revenueTrendData) > 0 || count($expenseTrendData) > 0;
+            
                 // Merge dates from both trends
                 $allDates = array_unique(array_merge(
-                    array_keys($data['revenueTrend']),
-                    array_keys($data['expenseTrend'])
+                array_keys($revenueTrendData),
+                array_keys($expenseTrendData)
                 ));
                 sort($allDates);
                 
-                $maxValue = max(
-                    count($data['revenueTrend']) > 0 ? max($data['revenueTrend']) : 0,
-                    count($data['expenseTrend']) > 0 ? max($data['expenseTrend']) : 0
-                );
+            // Prepare chart data
+            $chartLabels = array_map(fn($d) => \Carbon\Carbon::parse($d)->format('M d'), $allDates);
+            $revenueValues = array_map(fn($d) => $revenueTrendData[$d] ?? 0, $allDates);
+            $expenseValues = array_map(fn($d) => $expenseTrendData[$d] ?? 0, $allDates);
             @endphp
             
-            <div class="overflow-x-auto">
-                <div class="min-w-full" style="min-width: {{ count($allDates) * 60 }}px">
-                    <div class="flex items-end gap-2 h-48">
-                        @foreach($allDates as $date)
-                            @php
-                                $revenue = $data['revenueTrend'][$date] ?? 0;
-                                $expense = $data['expenseTrend'][$date] ?? 0;
-                                $revenueHeight = $maxValue > 0 ? ($revenue / $maxValue) * 100 : 0;
-                                $expenseHeight = $maxValue > 0 ? ($expense / $maxValue) * 100 : 0;
-                            @endphp
-                            <div class="flex-1 flex flex-col items-center">
-                                <div class="flex gap-1 items-end h-40 w-full justify-center">
-                                    <div 
-                                        class="w-4 bg-success-500 rounded-t transition-all duration-300" 
-                                        style="height: {{ $revenueHeight }}%"
-                                        title="Revenue: RWF {{ number_format($revenue, 0) }}"
-                                    ></div>
-                                    <div 
-                                        class="w-4 bg-danger-500 rounded-t transition-all duration-300" 
-                                        style="height: {{ $expenseHeight }}%"
-                                        title="Expense: RWF {{ number_format($expense, 0) }}"
-                                    ></div>
-                                </div>
-                                <div class="text-xs text-gray-500 mt-2 transform -rotate-45 origin-top-left">
-                                    {{ \Carbon\Carbon::parse($date)->format('M d') }}
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
+        @if($hasData)
+            <div class="w-full" style="height: 300px;">
+                <canvas id="revenueExpenseTrendChart"></canvas>
             </div>
             
-            <div class="flex justify-center gap-6 mt-8">
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 bg-success-500 rounded"></div>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">Revenue</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 bg-danger-500 rounded"></div>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">Expenses</span>
-                </div>
-            </div>
+            <script>
+                (function() {
+                    // Wait for Chart.js to be available
+                    function waitForChart(callback, maxAttempts = 50) {
+                        let attempts = 0;
+                        const check = function() {
+                            if (typeof Chart !== 'undefined') {
+                                callback();
+                            } else if (attempts < maxAttempts) {
+                                attempts++;
+                                setTimeout(check, 100);
+                            }
+                        };
+                        check();
+                    }
+                    
+                    function initRevenueExpenseChart() {
+                        const ctx = document.getElementById('revenueExpenseTrendChart');
+                        if (!ctx) return;
+                        
+                        // Destroy existing chart if it exists
+                        if (window.revenueExpenseChart instanceof Chart) {
+                            window.revenueExpenseChart.destroy();
+                        }
+                        
+                        const isDark = document.documentElement.classList.contains('dark');
+                    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                    const textColor = isDark ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+                    
+                    window.revenueExpenseChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: @json(array_values($chartLabels)),
+                            datasets: [
+                                {
+                                    label: 'Revenue',
+                                    data: @json(array_values($revenueValues)),
+                                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                                    borderColor: '#16a34a',
+                                    borderWidth: 1,
+                                    borderRadius: 4,
+                                    borderSkipped: false,
+                                    hoverBackgroundColor: 'rgba(34, 197, 94, 1)'
+                                },
+                                {
+                                    label: 'Expenses',
+                                    data: @json(array_values($expenseValues)),
+                                    backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                                    borderColor: '#dc2626',
+                                    borderWidth: 1,
+                                    borderRadius: 4,
+                                    borderSkipped: false,
+                                    hoverBackgroundColor: 'rgba(239, 68, 68, 1)'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        color: textColor,
+                                        usePointStyle: true,
+                                        pointStyle: 'rectRounded',
+                                        padding: 20,
+                                        font: {
+                                            size: 12
+                                        }
+                                    }
+                                },
+                                tooltip: {
+                                    enabled: true,
+                                    backgroundColor: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                                    titleColor: isDark ? '#fff' : '#1f2937',
+                                    bodyColor: isDark ? '#d1d5db' : '#4b5563',
+                                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                                    borderWidth: 1,
+                                    padding: 12,
+                                    displayColors: true,
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += 'RWF ' + new Intl.NumberFormat().format(context.parsed.y);
+                                            }
+                                            return label;
+                                        },
+                                        afterBody: function(context) {
+                                            const revenueVal = context[0]?.parsed?.y || 0;
+                                            const expenseVal = context[1]?.parsed?.y || 0;
+                                            const diff = revenueVal - expenseVal;
+                                            const prefix = diff >= 0 ? '↑ Profit: ' : '↓ Loss: ';
+                                            return '\n' + prefix + 'RWF ' + new Intl.NumberFormat().format(Math.abs(diff));
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: {
+                                        display: false
+                                    },
+                                    ticks: {
+                                        color: textColor,
+                                        maxRotation: 45,
+                                        minRotation: 0
+                                    }
+                                },
+                                y: {
+                                    beginAtZero: true,
+                                    grid: {
+                                        color: gridColor,
+                                        drawBorder: false
+                                    },
+                                    ticks: {
+                                        color: textColor,
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return 'RWF ' + (value / 1000000).toFixed(1) + 'M';
+                                            } else if (value >= 1000) {
+                                                return 'RWF ' + (value / 1000).toFixed(0) + 'K';
+                                            }
+                                            return 'RWF ' + value;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                    
+                    // Initialize on page load
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', function() {
+                            waitForChart(initRevenueExpenseChart);
+                        });
+                    } else {
+                        waitForChart(initRevenueExpenseChart);
+                    }
+                    
+                    // Reinitialize on Livewire updates
+                    document.addEventListener('livewire:navigated', function() {
+                        waitForChart(initRevenueExpenseChart);
+                    });
+                    
+                    // Handle Livewire v3 morphing
+                    if (typeof Livewire !== 'undefined') {
+                        Livewire.hook('morph.updated', () => {
+                            waitForChart(initRevenueExpenseChart);
+                        });
+                    }
+                })();
+            </script>
         @else
             <div class="text-center py-8 text-gray-500">
                 <x-heroicon-o-chart-bar class="w-12 h-12 mx-auto mb-2 opacity-50" />
