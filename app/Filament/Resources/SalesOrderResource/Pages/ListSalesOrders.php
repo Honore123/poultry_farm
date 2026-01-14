@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\SalesOrderResource\Pages;
 
+use App\Filament\Resources\EggStockAdjustmentResource;
 use App\Filament\Resources\SalesOrderResource;
 use App\Filament\Resources\SalesOrderResource\Widgets\EggInventoryWidget;
 use App\Filament\Resources\SalesOrderResource\Widgets\SalesOrderStatsWidget;
@@ -94,6 +95,13 @@ class ListSalesOrders extends ListRecords
                     );
                     $this->resetTable();
                 }),
+
+            Actions\Action::make('stockAdjustment')
+                ->label('Stock Adjustment')
+                ->icon('heroicon-o-adjustments-horizontal')
+                ->color('warning')
+                ->url(EggStockAdjustmentResource::getUrl('create'))
+                ->visible(fn () => auth()->user()?->can('create_egg_stock_adjustments')),
 
             Actions\CreateAction::make(),
         ];

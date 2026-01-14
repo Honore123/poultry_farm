@@ -41,6 +41,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_customers', 'create_customers', 'edit_customers', 'delete_customers',
             'view_sales_orders', 'create_sales_orders', 'edit_sales_orders', 'delete_sales_orders',
             'view_expenses', 'create_expenses', 'edit_expenses', 'delete_expenses',
+            'view_egg_stock_adjustments', 'create_egg_stock_adjustments', 'edit_egg_stock_adjustments', 'delete_egg_stock_adjustments',
 
             // Payroll (admin only for management, users can view own)
             'view_employee_salaries', 'create_employee_salaries', 'edit_employee_salaries', 'delete_employee_salaries',
@@ -94,6 +95,9 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // View sales & expenses
             'view_customers', 'view_sales_orders', 'view_expenses',
+
+            // Egg stock adjustments - managers can view and create
+            'view_egg_stock_adjustments', 'create_egg_stock_adjustments',
 
             // Reports
             'view_reports', 'export_reports',

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\SalesOrderResource\Widgets;
 
 use App\Models\DailyProduction;
+use App\Models\EggStockAdjustment;
 use App\Models\SalesOrder;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -14,18 +15,15 @@ class EggInventoryWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        // Get total sellable eggs from production
-        $sellableEggs = SalesOrder::getTotalSellableEggs();
-        
-        // Get total eggs sold (confirmed + delivered orders)
-        $soldEggs = SalesOrder::getTotalEggsSold();
-        
-        // Available eggs
-        $availableEggs = $sellableEggs - $soldEggs;
+        // Get breakdown of available eggs
+        $breakdown = SalesOrder::getAvailableEggsBreakdown();
+        $sellableEggs = $breakdown['sellable'];
+        $soldEggs = $breakdown['sold'];
+        $adjustment = $breakdown['adjustment'];
+        $availableEggs = $breakdown['available'];
 
         // Calculate percentages
         $soldPercentage = $sellableEggs > 0 ? round(($soldEggs / $sellableEggs) * 100, 1) : 0;
-        $availablePercentage = $sellableEggs > 0 ? round(($availableEggs / $sellableEggs) * 100, 1) : 0;
 
         // Get today's sales
         $todaySoldEggs = $this->getTodaySoldEggs();
@@ -33,9 +31,16 @@ class EggInventoryWidget extends BaseWidget
         // Get this week's sales
         $weekSoldEggs = $this->getWeekSoldEggs();
 
+        // Build description for available eggs including adjustment info
+        $availableDescription = number_format($availableEggs / 30, 0) . ' trays';
+        if ($adjustment !== 0) {
+            $adjustmentSign = $adjustment > 0 ? '+' : '';
+            $availableDescription .= ' (' . $adjustmentSign . number_format($adjustment) . ' adjustment)';
+        }
+
         return [
             Stat::make('Available Eggs', number_format($availableEggs))
-                ->description($availablePercentage . '% of sellable production')
+                ->description($availableDescription)
                 ->descriptionIcon('heroicon-m-cube')
                 ->color($availableEggs > 0 ? 'success' : 'danger')
                 ->chart($this->getAvailableEggsTrend()),
@@ -104,7 +109,10 @@ class EggInventoryWidget extends BaseWidget
                 ->get()
                 ->sum(fn ($order) => $order->total_eggs);
 
-            $trend[] = max(0, (int) $sellable - $sold);
+            // Stock adjustments up to this date
+            $adjustment = EggStockAdjustment::getNetAdjustmentUntil($date);
+
+            $trend[] = max(0, (int) $sellable - $sold + $adjustment);
         }
 
         return $trend;

@@ -26,6 +26,7 @@ class SalesOrder extends Model
         'customer_id',
         'order_date',
         'status',
+        'payment_status',
         'notes',
     ];
 
@@ -41,6 +42,54 @@ class SalesOrder extends Model
     public function items(): HasMany
     {
         return $this->hasMany(SalesOrderItem::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SalesOrderPayment::class);
+    }
+
+    /**
+     * Calculate total amount for this order
+     */
+    public function getTotalAmountAttribute(): float
+    {
+        return $this->items->sum(fn ($item) => $item->qty * $item->unit_price);
+    }
+
+    /**
+     * Calculate total amount paid for this order
+     */
+    public function getTotalPaidAttribute(): float
+    {
+        return $this->payments->sum('amount');
+    }
+
+    /**
+     * Calculate remaining amount to be paid
+     */
+    public function getRemainingAmountAttribute(): float
+    {
+        return max(0, $this->total_amount - $this->total_paid);
+    }
+
+    /**
+     * Update payment status based on payments
+     */
+    public function updatePaymentStatus(): void
+    {
+        $totalAmount = $this->total_amount;
+        $totalPaid = $this->total_paid;
+
+        if ($totalPaid <= 0) {
+            $this->payment_status = 'unpaid';
+        } elseif ($totalPaid >= $totalAmount) {
+            $this->payment_status = 'paid';
+        } else {
+            $this->payment_status = 'partial';
+        }
+
+        $this->saveQuietly();
     }
 
     /**
@@ -84,11 +133,41 @@ class SalesOrder extends Model
     }
 
     /**
-     * Get available eggs (sellable - sold)
+     * Get net stock adjustment from all egg stock adjustments
+     */
+    public static function getStockAdjustment(): int
+    {
+        return EggStockAdjustment::getNetAdjustment();
+    }
+
+    /**
+     * Get available eggs (sellable - sold + stock adjustments)
      */
     public static function getAvailableEggs(): int
     {
-        return self::getTotalSellableEggs() - self::getTotalEggsSold();
+        $sellable = self::getTotalSellableEggs();
+        $sold = self::getTotalEggsSold();
+        $adjustment = self::getStockAdjustment();
+
+        return $sellable - $sold + $adjustment;
+    }
+
+    /**
+     * Get available eggs breakdown for display
+     */
+    public static function getAvailableEggsBreakdown(): array
+    {
+        $sellable = self::getTotalSellableEggs();
+        $sold = self::getTotalEggsSold();
+        $adjustment = self::getStockAdjustment();
+        $available = $sellable - $sold + $adjustment;
+
+        return [
+            'sellable' => $sellable,
+            'sold' => $sold,
+            'adjustment' => $adjustment,
+            'available' => $available,
+        ];
     }
 
     /**
