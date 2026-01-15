@@ -16,6 +16,9 @@ class PaymentsRelationManager extends RelationManager
 
     public function form(Form $form): Form
     {
+        $ownerRecord = $this->getOwnerRecord();
+        $isSplitPayment = $ownerRecord->payment_schedule === 'split';
+        
         return $form
             ->schema([
                 Forms\Components\DatePicker::make('payment_date')
@@ -24,11 +27,36 @@ class PaymentsRelationManager extends RelationManager
                 Forms\Components\TextInput::make('payment_period')
                     ->required()
                     ->default(fn () => now()->format('F Y')),
+                Forms\Components\Select::make('payment_type')
+                    ->options($isSplitPayment 
+                        ? [
+                            'first_half' => 'First Half (50%)',
+                            'second_half' => 'Second Half (50%)',
+                        ]
+                        : [
+                            'full' => 'Full Payment (100%)',
+                        ])
+                    ->default($isSplitPayment ? 'first_half' : 'full')
+                    ->required()
+                    ->reactive()
+                    ->afterStateUpdated(function ($state, Forms\Set $set) use ($ownerRecord, $isSplitPayment) {
+                        if ($isSplitPayment && ($state === 'first_half' || $state === 'second_half')) {
+                            $set('base_salary', round($ownerRecord->salary_amount / 2, 2));
+                        } else {
+                            $set('base_salary', $ownerRecord->salary_amount);
+                        }
+                    })
+                    ->label('Payment Type'),
                 Forms\Components\TextInput::make('base_salary')
                     ->numeric()
                     ->required()
                     ->prefix('RWF ')
-                    ->default(fn () => $this->getOwnerRecord()->salary_amount),
+                    ->default(fn () => $isSplitPayment 
+                        ? round($ownerRecord->salary_amount / 2, 2) 
+                        : $ownerRecord->salary_amount)
+                    ->helperText($isSplitPayment 
+                        ? 'Half of monthly salary: RWF ' . number_format($ownerRecord->salary_amount / 2, 2) 
+                        : null),
                 Forms\Components\TextInput::make('bonus')
                     ->numeric()
                     ->default(0)
@@ -70,6 +98,18 @@ class PaymentsRelationManager extends RelationManager
                     ->sortable(),
                 Tables\Columns\TextColumn::make('payment_period')
                     ->searchable(),
+                Tables\Columns\BadgeColumn::make('payment_type')
+                    ->label('Type')
+                    ->formatStateUsing(fn ($state) => match($state) {
+                        'first_half' => '1st Half',
+                        'second_half' => '2nd Half',
+                        default => 'Full',
+                    })
+                    ->colors([
+                        'info' => 'first_half',
+                        'warning' => 'second_half',
+                        'success' => 'full',
+                    ]),
                 Tables\Columns\TextColumn::make('base_salary')
                     ->money('RWF')
                     ->label('Base'),
@@ -103,6 +143,13 @@ class PaymentsRelationManager extends RelationManager
                         'paid' => 'Paid',
                         'cancelled' => 'Cancelled',
                     ]),
+                Tables\Filters\SelectFilter::make('payment_type')
+                    ->options([
+                        'full' => 'Full Payment',
+                        'first_half' => 'First Half',
+                        'second_half' => 'Second Half',
+                    ])
+                    ->label('Payment Type'),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()

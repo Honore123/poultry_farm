@@ -27,6 +27,7 @@ class SalaryPayment extends Model
         'expense_id',
         'payment_date',
         'payment_period',
+        'payment_type',
         'base_salary',
         'bonus',
         'deductions',
@@ -123,16 +124,34 @@ class SalaryPayment extends Model
      */
     public function createExpenseRecord(): Expense
     {
+        $paymentTypeLabel = match($this->payment_type) {
+            'first_half' => ' (1st Half)',
+            'second_half' => ' (2nd Half)',
+            default => '',
+        };
+
         $expense = Expense::create([
             'date' => $this->payment_date,
             'category' => 'salary',
-            'description' => "Salary payment for {$this->employeeSalary->employee_name} - {$this->payment_period}",
+            'description' => "Salary payment for {$this->employeeSalary->employee_name} - {$this->payment_period}{$paymentTypeLabel}",
             'amount' => $this->net_amount,
         ]);
 
         $this->update(['expense_id' => $expense->id]);
 
         return $expense;
+    }
+
+    /**
+     * Get human-readable payment type label
+     */
+    public function getPaymentTypeLabelAttribute(): string
+    {
+        return match($this->payment_type) {
+            'first_half' => 'First Half',
+            'second_half' => 'Second Half',
+            default => 'Full Payment',
+        };
     }
 }
 

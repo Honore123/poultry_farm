@@ -72,12 +72,30 @@ class EmployeeSalaryResource extends Resource
                             ->minValue(0)
                             ->prefix('RWF ')
                             ->label('Monthly Salary'),
+                        Forms\Components\Select::make('payment_schedule')
+                            ->options([
+                                'full' => 'Full Payment (End of Month)',
+                                'split' => 'Split Payment (Half-Half)',
+                            ])
+                            ->default('full')
+                            ->required()
+                            ->reactive()
+                            ->label('Payment Schedule')
+                            ->helperText('Choose whether to pay full salary at once or split into two halves'),
+                        Forms\Components\Select::make('first_half_payment_day')
+                            ->options(array_combine(range(1, 15), range(1, 15)))
+                            ->label('First Half Payment Day')
+                            ->helperText('Day of the month for first half payment (typically 1-15)')
+                            ->visible(fn (Forms\Get $get) => $get('payment_schedule') === 'split')
+                            ->required(fn (Forms\Get $get) => $get('payment_schedule') === 'split'),
                         Forms\Components\Select::make('payment_day')
                             ->options(array_combine(range(1, 28), range(1, 28)))
-                            ->default(1)
+                            ->default(28)
                             ->required()
-                            ->label('Payment Day of Month')
-                            ->helperText('Day of the month when salary is paid (1-28)'),
+                            ->label(fn (Forms\Get $get) => $get('payment_schedule') === 'split' ? 'Second Half Payment Day' : 'Payment Day of Month')
+                            ->helperText(fn (Forms\Get $get) => $get('payment_schedule') === 'split' 
+                                ? 'Day of the month for second half payment (typically 25-28)' 
+                                : 'Day of the month when salary is paid (1-28)'),
                         Forms\Components\DatePicker::make('start_date')
                             ->required()
                             ->default(now())
@@ -124,9 +142,18 @@ class EmployeeSalaryResource extends Resource
                     ->money('RWF')
                     ->sortable()
                     ->label('Monthly Salary'),
+                Tables\Columns\TextColumn::make('payment_schedule')
+                    ->label('Schedule')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => $state === 'split' ? 'Split' : 'Full')
+                    ->color(fn ($state) => $state === 'split' ? 'info' : 'success'),
                 Tables\Columns\TextColumn::make('payment_day')
-                    ->label('Pay Day')
-                    ->formatStateUsing(fn ($state) => "Day {$state}"),
+                    ->label('Pay Day(s)')
+                    ->formatStateUsing(fn ($state, EmployeeSalary $record) => 
+                        $record->payment_schedule === 'split' 
+                            ? "Day {$record->first_half_payment_day} & Day {$state}"
+                            : "Day {$state}"
+                    ),
                 Tables\Columns\TextColumn::make('start_date')
                     ->date()
                     ->sortable(),
@@ -163,19 +190,40 @@ class EmployeeSalaryResource extends Resource
                     ->label('Process Payment')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
-                    ->form([
+                    ->form(fn (EmployeeSalary $record) => [
                         Forms\Components\DatePicker::make('payment_date')
                             ->required()
                             ->default(now()),
                         Forms\Components\TextInput::make('payment_period')
                             ->required()
                             ->default(fn () => now()->format('F Y'))
-                            ->helperText('e.g., December 2025'),
+                            ->helperText('e.g., January 2026'),
+                        Forms\Components\Select::make('payment_type')
+                            ->options(fn () => $record->payment_schedule === 'split' 
+                                ? [
+                                    'first_half' => 'First Half (50%)',
+                                    'second_half' => 'Second Half (50%)',
+                                ]
+                                : [
+                                    'full' => 'Full Payment (100%)',
+                                ])
+                            ->default(fn () => $record->payment_schedule === 'split' ? 'first_half' : 'full')
+                            ->required()
+                            ->reactive()
+                            ->label('Payment Type')
+                            ->helperText(fn () => $record->payment_schedule === 'split' 
+                                ? 'Select which half of the salary to pay' 
+                                : 'Full salary payment'),
                         Forms\Components\TextInput::make('base_salary')
                             ->numeric()
                             ->required()
                             ->prefix('RWF ')
-                            ->default(fn (EmployeeSalary $record) => $record->salary_amount),
+                            ->default(fn (Forms\Get $get) => $record->payment_schedule === 'split' 
+                                ? round($record->salary_amount / 2, 2) 
+                                : $record->salary_amount)
+                            ->helperText(fn () => $record->payment_schedule === 'split' 
+                                ? 'Half of monthly salary: RWF ' . number_format($record->salary_amount / 2, 2) 
+                                : null),
                         Forms\Components\TextInput::make('bonus')
                             ->numeric()
                             ->default(0)
@@ -197,6 +245,26 @@ class EmployeeSalaryResource extends Resource
                             ->rows(2),
                     ])
                     ->action(function (EmployeeSalary $record, array $data) {
+                        // Check if this payment type already exists for this period
+                        $existingPayment = $record->payments()
+                            ->where('payment_period', $data['payment_period'])
+                            ->where('payment_type', $data['payment_type'])
+                            ->first();
+
+                        if ($existingPayment) {
+                            $typeLabel = match($data['payment_type']) {
+                                'first_half' => 'First half',
+                                'second_half' => 'Second half',
+                                default => 'Full',
+                            };
+                            \Filament\Notifications\Notification::make()
+                                ->title('Payment Already Exists')
+                                ->body("{$typeLabel} payment for {$data['payment_period']} has already been processed.")
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
                         $payment = $record->payments()->create([
                             ...$data,
                             'status' => 'paid',
@@ -206,9 +274,15 @@ class EmployeeSalaryResource extends Resource
                         // Create expense record
                         $payment->createExpenseRecord();
 
+                        $typeLabel = match($data['payment_type']) {
+                            'first_half' => ' (1st half)',
+                            'second_half' => ' (2nd half)',
+                            default => '',
+                        };
+
                         \Filament\Notifications\Notification::make()
                             ->title('Payment Processed')
-                            ->body("Salary payment of RWF " . number_format($payment->net_amount) . " has been recorded.")
+                            ->body("Salary payment{$typeLabel} of RWF " . number_format($payment->net_amount) . " has been recorded.")
                             ->success()
                             ->send();
                     })

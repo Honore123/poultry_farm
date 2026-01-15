@@ -28,6 +28,8 @@ class EmployeeSalary extends Model
         'position',
         'salary_amount',
         'payment_day',
+        'payment_schedule',
+        'first_half_payment_day',
         'start_date',
         'end_date',
         'status',

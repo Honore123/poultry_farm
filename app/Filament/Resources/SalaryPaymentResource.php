@@ -40,11 +40,16 @@ class SalaryPaymentResource extends Resource
                             ->preload()
                             ->label('Employee')
                             ->reactive()
-                            ->afterStateUpdated(function ($state, Forms\Set $set) {
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
                                 if ($state) {
                                     $employeeSalary = \App\Models\EmployeeSalary::find($state);
                                     if ($employeeSalary) {
-                                        $set('base_salary', $employeeSalary->salary_amount);
+                                        $paymentType = $get('payment_type') ?? 'full';
+                                        if ($employeeSalary->payment_schedule === 'split' && $paymentType !== 'full') {
+                                            $set('base_salary', round($employeeSalary->salary_amount / 2, 2));
+                                        } else {
+                                            $set('base_salary', $employeeSalary->salary_amount);
+                                        }
                                     }
                                 }
                             }),
@@ -54,8 +59,41 @@ class SalaryPaymentResource extends Resource
                         Forms\Components\TextInput::make('payment_period')
                             ->required()
                             ->default(fn () => now()->format('F Y'))
-                            ->helperText('e.g., December 2025'),
-                    ])->columns(3),
+                            ->helperText('e.g., January 2026'),
+                        Forms\Components\Select::make('payment_type')
+                            ->options(function (Forms\Get $get) {
+                                $employeeSalaryId = $get('employee_salary_id');
+                                if ($employeeSalaryId) {
+                                    $employeeSalary = \App\Models\EmployeeSalary::find($employeeSalaryId);
+                                    if ($employeeSalary && $employeeSalary->payment_schedule === 'split') {
+                                        return [
+                                            'first_half' => 'First Half (50%)',
+                                            'second_half' => 'Second Half (50%)',
+                                        ];
+                                    }
+                                }
+                                return [
+                                    'full' => 'Full Payment (100%)',
+                                ];
+                            })
+                            ->default('full')
+                            ->required()
+                            ->reactive()
+                            ->afterStateUpdated(function ($state, Forms\Set $set, Forms\Get $get) {
+                                $employeeSalaryId = $get('employee_salary_id');
+                                if ($employeeSalaryId) {
+                                    $employeeSalary = \App\Models\EmployeeSalary::find($employeeSalaryId);
+                                    if ($employeeSalary) {
+                                        if ($state === 'first_half' || $state === 'second_half') {
+                                            $set('base_salary', round($employeeSalary->salary_amount / 2, 2));
+                                        } else {
+                                            $set('base_salary', $employeeSalary->salary_amount);
+                                        }
+                                    }
+                                }
+                            })
+                            ->label('Payment Type'),
+                    ])->columns(4),
 
                 Forms\Components\Section::make('Amounts')
                     ->schema([
@@ -125,6 +163,18 @@ class SalaryPaymentResource extends Resource
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('payment_period')
                     ->searchable(),
+                Tables\Columns\BadgeColumn::make('payment_type')
+                    ->label('Type')
+                    ->formatStateUsing(fn ($state) => match($state) {
+                        'first_half' => '1st Half',
+                        'second_half' => '2nd Half',
+                        default => 'Full',
+                    })
+                    ->colors([
+                        'info' => 'first_half',
+                        'warning' => 'second_half',
+                        'success' => 'full',
+                    ]),
                 Tables\Columns\TextColumn::make('base_salary')
                     ->money('RWF')
                     ->label('Base')
@@ -183,6 +233,13 @@ class SalaryPaymentResource extends Resource
                         'bank_transfer' => 'Bank Transfer',
                         'mobile_money' => 'Mobile Money',
                     ]),
+                Tables\Filters\SelectFilter::make('payment_type')
+                    ->options([
+                        'full' => 'Full Payment',
+                        'first_half' => 'First Half',
+                        'second_half' => 'Second Half',
+                    ])
+                    ->label('Payment Type'),
             ])
             ->actions([
                 Tables\Actions\Action::make('create_expense')
