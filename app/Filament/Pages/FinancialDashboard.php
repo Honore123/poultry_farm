@@ -433,9 +433,12 @@ class FinancialDashboard extends Page implements HasForms
             ->get();
 
         foreach ($activeBatches as $batch) {
-            // Calculate batch age at start of selected month (in weeks)
+            // Calculate batch age at start and end of selected month (in weeks)
             $ageAtStartDays = max(0, $batch->placement_date->diffInDays($startOfMonth));
             $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
+            
+            $ageAtEndDays = max(0, $batch->placement_date->diffInDays($endOfMonth));
+            $ageAtEndWeeks = max(1, ceil($ageAtEndDays / 7));
             
             // Determine the projected status based on age at the selected month
             $projectedStatus = $this->getProjectedBatchStatus($ageAtStartWeeks);
@@ -461,17 +464,34 @@ class FinancialDashboard extends Page implements HasForms
             // Average hens for the month (accounting for mortality)
             $avgHens = max(0, $currentHens - ($mortalityDuringMonth / 2));
             
-            // Get production target based on batch age at selected month
-            $productionTarget = ProductionTarget::where('week', '<=', $ageAtStartWeeks)
-                ->orderBy('week', 'desc')
-                ->first();
+            // Get production targets for all weeks in the month and calculate mean HD Production %
+            // This gives a more accurate estimate than using a single week
+            $weeksInMonth = range($ageAtStartWeeks, $ageAtEndWeeks);
+            $productionPercentages = [];
+            $weekDetails = [];
             
-            $henDayPct = 0;
+            foreach ($weeksInMonth as $week) {
+                $productionTarget = ProductionTarget::where('week', '<=', $week)
+                    ->orderBy('week', 'desc')
+                    ->first();
+                
+                if ($productionTarget) {
+                    $productionPercentages[] = $productionTarget->hen_day_production_pct;
+                    $weekDetails[] = $productionTarget->week . ':' . $productionTarget->hen_day_production_pct . '%';
+                }
+            }
+            
+            // Calculate mean HD Production %
+            $henDayPct = count($productionPercentages) > 0
+                ? array_sum($productionPercentages) / count($productionPercentages)
+                : 0;
+            
+            // Build target source description
             $targetSource = '';
-            
-            if ($productionTarget) {
-                $henDayPct = $productionTarget->hen_day_production_pct;
-                $targetSource = 'Week ' . $productionTarget->week . ' (' . $henDayPct . '%)';
+            if (count($weeksInMonth) > 1) {
+                $targetSource = 'Week ' . $ageAtStartWeeks . '-' . $ageAtEndWeeks . ' (avg ' . round($henDayPct, 1) . '%)';
+            } elseif (count($productionPercentages) > 0) {
+                $targetSource = 'Week ' . $ageAtStartWeeks . ' (' . round($henDayPct, 1) . '%)';
             }
             
             // Calculate monthly egg production
@@ -481,9 +501,10 @@ class FinancialDashboard extends Page implements HasForms
             
             $batchDetails[] = [
                 'batch_code' => $batch->code,
-                'age_weeks' => $ageAtStartWeeks,
+                'age_weeks' => $ageAtEndWeeks,
+                'age_weeks_start' => $ageAtStartWeeks,
                 'hen_count' => round($avgHens),
-                'production_pct' => $henDayPct,
+                'production_pct' => round($henDayPct, 1),
                 'monthly_eggs' => $monthlyEggs,
                 'target_source' => $targetSource,
             ];

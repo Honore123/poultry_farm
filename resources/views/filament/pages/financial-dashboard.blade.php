@@ -1177,12 +1177,21 @@
                                             <tr class="border-b dark:border-gray-700">
                                                 <td class="py-2 text-gray-900 dark:text-white">
                                                     {{ $batch['batch_code'] }}
-                                                    <span class="text-xs text-gray-500 block">Week {{ $batch['age_weeks'] }}</span>
+                                                    <span class="text-xs text-gray-500 block">
+                                                        @if(isset($batch['age_weeks_start']) && $batch['age_weeks_start'] != $batch['age_weeks'])
+                                                            Week {{ $batch['age_weeks_start'] }}-{{ $batch['age_weeks'] }}
+                                                        @else
+                                                            Week {{ $batch['age_weeks'] }}
+                                                        @endif
+                                                    </span>
                                                 </td>
                                                 <td class="py-2 text-right text-gray-600 dark:text-gray-400">{{ number_format($batch['hen_count']) }}</td>
                                                 <td class="py-2 text-right">
                                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-success-100 text-success-800 dark:bg-success-900 dark:text-success-300">
                                                         {{ $batch['production_pct'] }}%
+                                                        @if(isset($batch['age_weeks_start']) && $batch['age_weeks_start'] != $batch['age_weeks'])
+                                                            <span class="ml-1 opacity-75">(avg)</span>
+                                                        @endif
                                                     </span>
                                                 </td>
                                                 <td class="py-2 text-right font-medium text-success-600">{{ number_format($batch['monthly_eggs']) }}</td>
@@ -1224,6 +1233,7 @@
 
                             <div class="mt-4 text-xs text-gray-500 dark:text-gray-400">
                                 <p>* Production targets based on ISA Brown laying standards (weeks 18+)</p>
+                                <p>* Production % uses mean of all weeks in the month for accurate estimation</p>
                             </div>
                         </x-filament::section>
                     @endif
