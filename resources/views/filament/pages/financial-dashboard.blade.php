@@ -805,20 +805,60 @@
                     Monthly Expense Projection
                 </h2>
 
-                {{-- Month Selector --}}
-                <div class="mt-6 max-w-xs">
-                    <x-filament::input.wrapper>
-                        <x-filament::input.select wire:model.live="projectionMonth">
-                            @php
-                                $start = now()->subMonths(12);
-                                $end = now()->addMonths(6);
-                            @endphp
-                            @while($start <= $end)
-                                <option value="{{ $start->format('Y-m') }}">{{ $start->format('F Y') }}</option>
-                                @php $start->addMonth(); @endphp
-                            @endwhile
-                        </x-filament::input.select>
-                    </x-filament::input.wrapper>
+                {{-- Month Selector and Egg Price Input --}}
+                <div class="mt-6 flex flex-wrap items-start gap-4">
+                    <div class="w-full max-w-xs">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Select Month</label>
+                        <x-filament::input.wrapper>
+                            <x-filament::input.select wire:model.live="projectionMonth">
+                                @php
+                                    $start = now()->subMonths(12);
+                                    $end = now()->addMonths(6);
+                                @endphp
+                                @while($start <= $end)
+                                    <option value="{{ $start->format('Y-m') }}">{{ $start->format('F Y') }}</option>
+                                    @php $start->addMonth(); @endphp
+                                @endwhile
+                            </x-filament::input.select>
+                        </x-filament::input.wrapper>
+                        <div class="h-5"></div>
+                    </div>
+                    <div class="w-full max-w-xs">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Egg Price (RWF)
+                            <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(optional)</span>
+                        </label>
+                        <div class="fi-input-wrp flex rounded-lg shadow-sm ring-1 transition duration-75 bg-white dark:bg-white/5 ring-gray-950/10 dark:ring-white/20 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500">
+                            <span class="fi-input-wrp-prefix flex items-center whitespace-nowrap px-3 text-gray-500 dark:text-gray-400 text-sm border-e border-gray-200 dark:border-white/10">RWF</span>
+                            <input 
+                                type="number" 
+                                wire:model.live.debounce.500ms="customEggPrice"
+                                placeholder="e.g. 150"
+                                min="1"
+                                step="1"
+                                class="fi-input block w-full border-none bg-transparent py-1.5 text-base text-gray-950 outline-none transition duration-75 placeholder:text-gray-400 focus:ring-0 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.400)] dark:text-white dark:placeholder:text-gray-500 dark:disabled:text-gray-400 dark:disabled:[-webkit-text-fill-color:theme(colors.gray.400)] dark:disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.500)] sm:text-sm sm:leading-6 ps-3 pe-3"
+                            />
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Custom price per egg for projection</p>
+                    </div>
+                    <div class="w-full max-w-xs">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Feed Price/kg (RWF)
+                            <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(optional)</span>
+                        </label>
+                        <div class="fi-input-wrp flex rounded-lg shadow-sm ring-1 transition duration-75 bg-white dark:bg-white/5 ring-gray-950/10 dark:ring-white/20 focus-within:ring-2 focus-within:ring-primary-600 dark:focus-within:ring-primary-500">
+                            <span class="fi-input-wrp-prefix flex items-center whitespace-nowrap px-3 text-gray-500 dark:text-gray-400 text-sm border-e border-gray-200 dark:border-white/10">RWF</span>
+                            <input 
+                                type="number" 
+                                wire:model.live.debounce.500ms="customFeedPricePerKg"
+                                placeholder="e.g. 710"
+                                min="1"
+                                step="1"
+                                class="fi-input block w-full border-none bg-transparent py-1.5 text-base text-gray-950 outline-none transition duration-75 placeholder:text-gray-400 focus:ring-0 disabled:text-gray-500 disabled:[-webkit-text-fill-color:theme(colors.gray.500)] disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.400)] dark:text-white dark:placeholder:text-gray-500 dark:disabled:text-gray-400 dark:disabled:[-webkit-text-fill-color:theme(colors.gray.400)] dark:disabled:placeholder:[-webkit-text-fill-color:theme(colors.gray.500)] sm:text-sm sm:leading-6 ps-3 pe-3"
+                            />
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Custom feed price per kg for projection</p>
+                    </div>
                 </div>
             </div>
 
@@ -848,6 +888,9 @@
                             <p class="text-sm text-gray-500 mt-1">
                                 @if($projection['isCurrentOrFuture'])
                                     {{ number_format($projection['incomeProjection']['totalProjectedEggs'], 0) }} eggs @ RWF {{ number_format($projection['incomeProjection']['avgPricePerEgg'], 0) }}/egg
+                                    @if($projection['incomeProjection']['usingCustomPrice'])
+                                        <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">Custom</span>
+                                    @endif
                                 @else
                                     Actual revenue: RWF {{ number_format($projection['actualRevenue'], 0) }}
                                 @endif
@@ -897,6 +940,9 @@
                                     Feed
                                     @if($projection['isCurrentOrFuture'])
                                         <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded">+{{ $projection['feedProjection']['tolerancePercent'] }}%</span>
+                                        @if($projection['feedProjection']['usingCustomFeedPrice'])
+                                            <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">Custom</span>
+                                        @endif
                                     @endif
                                 </p>
                                 <p class="text-2xl font-bold text-amber-600 dark:text-amber-400">
@@ -1031,7 +1077,13 @@
                                             <tr class="border-b dark:border-gray-700">
                                                 <td class="py-2 text-gray-900 dark:text-white">
                                                     {{ $batch['batch_code'] }}
-                                                    <span class="text-xs text-gray-500 block">Week {{ $batch['age_weeks'] }}</span>
+                                                    <span class="text-xs text-gray-500 block">
+                                                        @if($batch['age_weeks_start'] != $batch['age_weeks'])
+                                                            Week {{ $batch['age_weeks_start'] }}-{{ $batch['age_weeks'] }}
+                                                        @else
+                                                            Week {{ $batch['age_weeks'] }}
+                                                        @endif
+                                                    </span>
                                                 </td>
                                                 <td class="py-2">
                                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs
@@ -1055,11 +1107,24 @@
                                         </tr>
                                         <tr class="bg-amber-50 dark:bg-amber-900/20">
                                             <td colspan="4" class="py-2 text-gray-700 dark:text-gray-300">
-                                                Highest Price per kg
-                                                <span class="text-xs text-gray-500 ml-1">(from last 3 months)</span>
+                                                Price per kg
+                                                @if($projection['feedProjection']['usingCustomFeedPrice'])
+                                                    <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">Custom</span>
+                                                @else
+                                                    <span class="text-xs text-gray-500 ml-1">(highest from last 3 months)</span>
+                                                @endif
                                             </td>
                                             <td class="py-2 text-right font-medium text-gray-700 dark:text-gray-300">RWF {{ number_format($projection['feedProjection']['avgPricePerKg'], 0) }}</td>
                                         </tr>
+                                        @if($projection['feedProjection']['usingCustomFeedPrice'])
+                                            <tr class="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colspan="4" class="py-2 text-gray-500 dark:text-gray-400 text-sm">
+                                                    Historical highest price
+                                                    <span class="text-xs text-gray-400 ml-1">(for reference)</span>
+                                                </td>
+                                                <td class="py-2 text-right text-sm text-gray-500 dark:text-gray-400">RWF {{ number_format($projection['feedProjection']['historicalHighestPricePerKg'], 0) }}</td>
+                                            </tr>
+                                        @endif
                                         <tr class="bg-amber-50 dark:bg-amber-900/20">
                                             <td colspan="4" class="py-2 text-gray-700 dark:text-gray-300">
                                                 Price per kg (+{{ $projection['feedProjection']['tolerancePercent'] }}% tolerance)
@@ -1082,6 +1147,7 @@
 
                             <div class="mt-4 text-xs text-gray-500 dark:text-gray-400">
                                 <p>* Feed targets based on Rearing (weeks 1-18) and Production (weeks 18+) standards</p>
+                                <p>* Uses highest week in the month for conservative expense estimation</p>
                             </div>
                         </x-filament::section>
                     @endif
@@ -1130,11 +1196,24 @@
                                         </tr>
                                         <tr class="bg-success-50 dark:bg-success-900/20">
                                             <td colspan="3" class="py-2 text-gray-700 dark:text-gray-300">
-                                                Avg. Price per egg
-                                                <span class="text-xs text-gray-500 ml-1">(based on last 3 months sales)</span>
+                                                Price per egg
+                                                @if($projection['incomeProjection']['usingCustomPrice'])
+                                                    <span class="ml-1 px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">Custom</span>
+                                                @else
+                                                    <span class="text-xs text-gray-500 ml-1">(based on last 3 months sales)</span>
+                                                @endif
                                             </td>
                                             <td class="py-2 text-right font-medium text-gray-700 dark:text-gray-300">RWF {{ number_format($projection['incomeProjection']['avgPricePerEgg'], 0) }}</td>
                                         </tr>
+                                        @if($projection['incomeProjection']['usingCustomPrice'])
+                                            <tr class="bg-gray-50 dark:bg-gray-800/50">
+                                                <td colspan="3" class="py-2 text-gray-500 dark:text-gray-400 text-sm">
+                                                    Historical avg. price
+                                                    <span class="text-xs text-gray-400 ml-1">(for reference)</span>
+                                                </td>
+                                                <td class="py-2 text-right text-sm text-gray-500 dark:text-gray-400">RWF {{ number_format($projection['incomeProjection']['historicalAvgPricePerEgg'], 0) }}</td>
+                                            </tr>
+                                        @endif
                                         <tr class="bg-success-100 dark:bg-success-900/40">
                                             <td colspan="3" class="py-2 font-bold text-gray-900 dark:text-white">Projected Income</td>
                                             <td class="py-2 text-right font-bold text-success-600">RWF {{ number_format($projection['incomeProjection']['projectedIncome'], 0) }}</td>
@@ -1226,6 +1305,9 @@
                                     <td class="py-3 text-gray-900 dark:text-white flex items-center gap-2">
                                         <div class="w-3 h-3 rounded bg-success-500"></div>
                                         Egg Sales (Projected)
+                                        @if($projection['incomeProjection']['usingCustomPrice'])
+                                            <span class="px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">@ RWF {{ number_format($projection['incomeProjection']['avgPricePerEgg'], 0) }}/egg</span>
+                                        @endif
                                     </td>
                                     <td class="py-3 text-right font-medium text-success-600">
                                         RWF {{ number_format($totalIncome, 0) }}
@@ -1266,6 +1348,9 @@
                                         Feed
                                         @if($projection['isCurrentOrFuture'])
                                             <span class="px-1.5 py-0.5 text-xs font-semibold bg-amber-200 dark:bg-amber-700 text-amber-800 dark:text-amber-200 rounded">+{{ $projection['feedProjection']['tolerancePercent'] }}%</span>
+                                            @if($projection['feedProjection']['usingCustomFeedPrice'])
+                                                <span class="px-1.5 py-0.5 text-xs font-semibold bg-primary-200 dark:bg-primary-800 text-primary-800 dark:text-primary-200 rounded">@ RWF {{ number_format($projection['feedProjection']['avgPricePerKg'], 0) }}/kg</span>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="py-3 text-right font-medium text-gray-900 dark:text-white">
@@ -1326,7 +1411,19 @@
                                 <x-heroicon-m-exclamation-triangle class="w-5 h-5 text-warning-600 dark:text-warning-400 flex-shrink-0 mt-0.5" />
                                 <div class="text-sm text-warning-800 dark:text-warning-200">
                                     <p class="font-medium">Projection Notice</p>
-                                    <p class="mt-1">Income is projected based on production targets and historical egg prices (falls back to 150 RWF/egg). Feed costs are based on rearing/production targets. Actual results may vary.</p>
+                                    <p class="mt-1">
+                                        @if($projection['incomeProjection']['usingCustomPrice'])
+                                            Income is projected based on production targets and <strong>custom egg price of RWF {{ number_format($projection['incomeProjection']['avgPricePerEgg'], 0) }}/egg</strong>.
+                                        @else
+                                            Income is projected based on production targets and historical egg prices (falls back to 150 RWF/egg).
+                                        @endif
+                                        @if($projection['feedProjection']['usingCustomFeedPrice'])
+                                            Feed costs are calculated using <strong>custom feed price of RWF {{ number_format($projection['feedProjection']['avgPricePerKg'], 0) }}/kg</strong>.
+                                        @else
+                                            Feed costs are based on rearing/production targets and historical highest price.
+                                        @endif
+                                        Actual results may vary.
+                                    </p>
                                 </div>
                             </div>
                         </div>

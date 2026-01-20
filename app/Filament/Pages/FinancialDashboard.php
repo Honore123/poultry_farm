@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -48,6 +49,8 @@ class FinancialDashboard extends Page implements HasForms
     
     // Expense projection properties
     public ?string $projectionMonth = null;
+    public ?float $customEggPrice = null;
+    public ?float $customFeedPricePerKg = null;
 
     public static function canAccess(): bool
     {
@@ -115,6 +118,26 @@ class FinancialDashboard extends Page implements HasForms
                 ->options($months)
                 ->default(now()->format('Y-m'))
                 ->live()
+                ->afterStateUpdated(fn () => $this->dispatch('$refresh')),
+            TextInput::make('customEggPrice')
+                ->label('Egg Price (RWF)')
+                ->placeholder('e.g. 150')
+                ->numeric()
+                ->minValue(1)
+                ->step(1)
+                ->prefix('RWF')
+                ->helperText('Custom price per egg for projection (leave empty for historical average)')
+                ->live(debounce: 500)
+                ->afterStateUpdated(fn () => $this->dispatch('$refresh')),
+            TextInput::make('customFeedPricePerKg')
+                ->label('Feed Price/kg (RWF)')
+                ->placeholder('e.g. 710')
+                ->numeric()
+                ->minValue(1)
+                ->step(1)
+                ->prefix('RWF')
+                ->helperText('Custom feed price per kg for projection (leave empty for historical highest)')
+                ->live(debounce: 500)
                 ->afterStateUpdated(fn () => $this->dispatch('$refresh')),
         ];
     }
@@ -247,13 +270,17 @@ class FinancialDashboard extends Page implements HasForms
                 continue;
             }
 
-            // Calculate batch age at start of selected month (in weeks)
+            // Calculate batch age at start and end of selected month (in weeks)
             $ageAtStartDays = max(0, $batch->placement_date->diffInDays($startOfMonth));
             $ageAtStartWeeks = max(1, ceil($ageAtStartDays / 7));
             
-            // Determine the projected status based on age at the selected month
+            // Calculate batch age at END of month - use this for feed targets (higher week = higher feed consumption)
+            $ageAtEndDays = max(0, $batch->placement_date->diffInDays($endOfMonth));
+            $ageAtEndWeeks = max(1, ceil($ageAtEndDays / 7));
+            
+            // Determine the projected status based on age at the END of month (use highest week for conservative estimate)
             // Typically: Week 1-4 = brooding, Week 5-17 = growing, Week 18+ = laying
-            $projectedStatus = $this->getProjectedBatchStatus($ageAtStartWeeks);
+            $projectedStatus = $this->getProjectedBatchStatus($ageAtEndWeeks);
             
             // Get total mortality up to start of selected month
             $mortalityBeforeMonth = MortalityLog::where('batch_id', $batch->id)
@@ -272,13 +299,13 @@ class FinancialDashboard extends Page implements HasForms
             // Average birds for the month (accounting for mortality)
             $avgBirds = max(0, $currentBirds - ($mortalityDuringMonth / 2));
             
-            // Get feed target based on PROJECTED status for the selected month
+            // Get feed target based on age at END of month (use highest week for conservative expense estimate)
             $dailyFeedPerBirdG = 0;
             $targetSource = '';
             
             if (in_array($projectedStatus, ['brooding', 'growing'])) {
-                // Use rearing targets
-                $rearingTarget = RearingTarget::where('week', '<=', $ageAtStartWeeks)
+                // Use rearing targets - use end of month week for higher feed consumption
+                $rearingTarget = RearingTarget::where('week', '<=', $ageAtEndWeeks)
                     ->orderBy('week', 'desc')
                     ->first();
                 
@@ -287,8 +314,8 @@ class FinancialDashboard extends Page implements HasForms
                     $targetSource = 'Rearing (Week ' . $rearingTarget->week . ')';
                 }
             } else {
-                // Use production targets for laying batches
-                $productionTarget = ProductionTarget::where('week', '<=', $ageAtStartWeeks)
+                // Use production targets for laying batches - use end of month week
+                $productionTarget = ProductionTarget::where('week', '<=', $ageAtEndWeeks)
                     ->orderBy('week', 'desc')
                     ->first();
                 
@@ -305,7 +332,8 @@ class FinancialDashboard extends Page implements HasForms
             $batchDetails[] = [
                 'batch_code' => $batch->code,
                 'status' => $projectedStatus,
-                'age_weeks' => $ageAtStartWeeks,
+                'age_weeks' => $ageAtEndWeeks,
+                'age_weeks_start' => $ageAtStartWeeks,
                 'bird_count' => round($avgBirds),
                 'daily_feed_g' => round($dailyFeedPerBirdG, 1),
                 'monthly_feed_kg' => round($monthlyFeedKg, 2),
@@ -340,10 +368,17 @@ class FinancialDashboard extends Page implements HasForms
             }
         }
         
-        // Default price per kg if no historical data with kgs recorded (710 RWF per kg)
-        $basePricePerKg = $highestPricePerKg > 0 
-            ? $highestPricePerKg 
+        // Calculate historical highest price per kg
+        $historicalHighestPricePerKg = $highestPricePerKg > 0
+            ? $highestPricePerKg
             : 710; // Default 710 RWF per kg if no data
+        
+        // Use custom feed price if provided, otherwise fall back to historical highest
+        $basePricePerKg = $this->customFeedPricePerKg && $this->customFeedPricePerKg > 0
+            ? $this->customFeedPricePerKg
+            : $historicalHighestPricePerKg;
+        
+        $usingCustomFeedPrice = $this->customFeedPricePerKg && $this->customFeedPricePerKg > 0;
         
         // Apply 3% tolerance to price per kg
         $tolerancePercent = 3;
@@ -356,6 +391,8 @@ class FinancialDashboard extends Page implements HasForms
         return [
             'totalProjectedKg' => round($totalProjectedKg, 2),
             'avgPricePerKg' => round($basePricePerKg, 2),
+            'historicalHighestPricePerKg' => round($historicalHighestPricePerKg, 2),
+            'usingCustomFeedPrice' => $usingCustomFeedPrice,
             'pricePerKgWithTolerance' => round($pricePerKgWithTolerance, 2),
             'tolerancePercent' => $tolerancePercent,
             'projectedCost' => round($projectedCost, 2),
@@ -471,16 +508,25 @@ class FinancialDashboard extends Page implements HasForms
         $historicalEggProduction = DailyProduction::where('date', '>=', $threeMonthsAgo)
             ->sum('eggs_total');
         
-        // Default price per egg if no historical data (150 RWF per egg)
-        $avgPricePerEgg = $historicalQty > 0 
-            ? $historicalRevenue / $historicalQty 
+        // Calculate historical average price per egg
+        $historicalAvgPricePerEgg = $historicalQty > 0
+            ? $historicalRevenue / $historicalQty
             : 150; // Default 150 RWF per egg if no data
+        
+        // Use custom egg price if provided, otherwise fall back to historical average
+        $avgPricePerEgg = $this->customEggPrice && $this->customEggPrice > 0
+            ? $this->customEggPrice
+            : $historicalAvgPricePerEgg;
+        
+        $usingCustomPrice = $this->customEggPrice && $this->customEggPrice > 0;
         
         $projectedIncome = $totalProjectedEggs * $avgPricePerEgg;
 
         return [
             'totalProjectedEggs' => $totalProjectedEggs,
             'avgPricePerEgg' => round($avgPricePerEgg, 2),
+            'historicalAvgPricePerEgg' => round($historicalAvgPricePerEgg, 2),
+            'usingCustomPrice' => $usingCustomPrice,
             'projectedIncome' => round($projectedIncome, 2),
             'batchCount' => count($batchDetails),
             'batchDetails' => $batchDetails,
@@ -619,12 +665,12 @@ class FinancialDashboard extends Page implements HasForms
 
         $prevExpenses = Expense::whereBetween('date', [$prevStartDate, $prevEndDate])->sum('amount');
 
-        $revenueChange = $prevRevenue > 0 
-            ? round((($totalRevenue - $prevRevenue) / $prevRevenue) * 100, 1) 
+        $revenueChange = $prevRevenue > 0
+            ? round((($totalRevenue - $prevRevenue) / $prevRevenue) * 100, 1)
             : ($totalRevenue > 0 ? 100 : 0);
         
-        $expenseChange = $prevExpenses > 0 
-            ? round((($totalExpenses - $prevExpenses) / $prevExpenses) * 100, 1) 
+        $expenseChange = $prevExpenses > 0
+            ? round((($totalExpenses - $prevExpenses) / $prevExpenses) * 100, 1)
             : ($totalExpenses > 0 ? 100 : 0);
 
         return [
@@ -750,8 +796,8 @@ class FinancialDashboard extends Page implements HasForms
         $historicalQty = $historicalEggSales->total_qty ?? 0;
         
         // Average price per egg from sales data, fallback to 150 RWF if no sales
-        $avgPricePerEgg = $historicalQty > 0 
-            ? $historicalRevenue / $historicalQty 
+        $avgPricePerEgg = $historicalQty > 0
+            ? $historicalRevenue / $historicalQty
             : 150; // Default 150 RWF if no sales data
         
         $priceSource = $historicalQty > 0 ? 'sales_history' : 'default';
@@ -763,8 +809,8 @@ class FinancialDashboard extends Page implements HasForms
         $recommendedPrices = [];
         $margins = [20, 30, 40, 50];
         foreach ($margins as $margin) {
-            $recommendedPrices[$margin] = $costPerEgg > 0 
-                ? round($costPerEgg / (1 - ($margin / 100)), 2) 
+            $recommendedPrices[$margin] = $costPerEgg > 0
+                ? round($costPerEgg / (1 - ($margin / 100)), 2)
                 : 0;
         }
         
@@ -800,4 +846,3 @@ class FinancialDashboard extends Page implements HasForms
         ];
     }
 }
-
