@@ -42,7 +42,12 @@ class SalesOrderResource extends Resource
                         Forms\Components\DatePicker::make('order_date')
                             ->required()
                             ->default(now())
-                            ->native(false),
+                            ->native(false)
+                            ->minDate(fn ($record) => $record ? null : now()->startOfDay())
+                            ->maxDate(now())
+                            ->helperText(fn ($record) => $record 
+                                ? 'Changing dates on existing orders may affect stock calculations' 
+                                : 'Past dates not allowed to maintain accurate stock tracking'),
                         Forms\Components\Select::make('status')
                             ->options([
                                 'draft' => 'Draft',
