@@ -123,7 +123,7 @@ class PaymentsRelationManager extends RelationManager
                     ->visible(function () {
                         /** @var SalesOrder $salesOrder */
                         $salesOrder = $this->getOwnerRecord();
-                        return $salesOrder->remaining_amount > 0;
+                        return $salesOrder->remaining_amount > 0 && auth()->user()?->can('create_sales_order_payments');
                     }),
             ])
             ->actions([
@@ -131,11 +131,14 @@ class PaymentsRelationManager extends RelationManager
                     ->mutateFormDataUsing(function (array $data): array {
                         $data['received_by'] = auth()->id();
                         return $data;
-                    }),
-                Tables\Actions\DeleteAction::make(),
+                    })
+                    ->visible(fn () => auth()->user()?->can('edit_sales_order_payments')),
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn () => auth()->user()?->can('delete_sales_order_payments')),
             ])
             ->bulkActions([
-                Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->visible(fn () => auth()->user()?->can('delete_sales_order_payments')),
             ])
             ->defaultSort('payment_date', 'desc')
             ->emptyStateHeading('No payments recorded')

@@ -27,11 +27,6 @@ class UserResource extends Resource
 
     protected static ?int $navigationSort = 100;
 
-    public static function canViewAny(): bool
-    {
-        return auth()->user()?->hasRole('admin') ?? false;
-    }
-
     public static function form(Form $form): Form
     {
         return $form

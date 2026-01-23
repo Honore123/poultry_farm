@@ -267,7 +267,7 @@ class SalesOrderResource extends Resource
                             ->success()
                             ->send();
                     })
-                    ->visible(fn (SalesOrder $record) => $record->remaining_amount > 0),
+                    ->visible(fn (SalesOrder $record) => $record->remaining_amount > 0 && auth()->user()?->can('create_sales_order_payments')),
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
             ])

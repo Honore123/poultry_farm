@@ -40,6 +40,7 @@ class RolesAndPermissionsSeeder extends Seeder
             // Sales & Finance
             'view_customers', 'create_customers', 'edit_customers', 'delete_customers',
             'view_sales_orders', 'create_sales_orders', 'edit_sales_orders', 'delete_sales_orders',
+            'view_sales_order_payments', 'create_sales_order_payments', 'edit_sales_order_payments', 'delete_sales_order_payments',
             'view_expenses', 'create_expenses', 'edit_expenses', 'delete_expenses',
             'view_egg_stock_adjustments', 'create_egg_stock_adjustments', 'edit_egg_stock_adjustments', 'delete_egg_stock_adjustments',
 
@@ -47,8 +48,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_employee_salaries', 'create_employee_salaries', 'edit_employee_salaries', 'delete_employee_salaries',
             'view_salary_payments', 'create_salary_payments', 'edit_salary_payments', 'delete_salary_payments',
 
-            // Settings
+            // Settings & Targets
             'view_feed_intake_targets', 'create_feed_intake_targets', 'edit_feed_intake_targets', 'delete_feed_intake_targets',
+            'view_production_targets', 'create_production_targets', 'edit_production_targets', 'delete_production_targets',
+            'view_rearing_targets', 'create_rearing_targets', 'edit_rearing_targets', 'delete_rearing_targets',
 
             // Activity Logs (admin only)
             'view_activity_logs',
@@ -56,6 +59,10 @@ class RolesAndPermissionsSeeder extends Seeder
             // Reports & Dashboard
             'view_reports', 'export_reports',
             'view_dashboard',
+
+            // Roles & Permissions Management (admin only)
+            'view_roles', 'create_roles', 'edit_roles', 'delete_roles',
+            'view_permissions', 'create_permissions', 'edit_permissions', 'delete_permissions',
         ];
 
         // Create all permissions

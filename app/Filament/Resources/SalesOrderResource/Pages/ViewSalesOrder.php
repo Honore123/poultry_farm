@@ -58,7 +58,7 @@ class ViewSalesOrder extends ViewRecord
                     // Refresh the page to show updated data
                     $this->redirect($this->getResource()::getUrl('view', ['record' => $this->record]));
                 })
-                ->visible(fn () => $this->record->remaining_amount > 0),
+                ->visible(fn () => $this->record->remaining_amount > 0 && auth()->user()?->can('create_sales_order_payments')),
             Actions\EditAction::make(),
         ];
     }
