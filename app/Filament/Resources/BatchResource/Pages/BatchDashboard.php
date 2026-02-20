@@ -182,9 +182,11 @@ class BatchDashboard extends Page
         try {
             $data = DB::table('v_daily_laying_rate')
                 ->where('batch_id', $this->record->id)
-                ->orderBy('date')
+                ->orderBy('date', 'desc')
                 ->limit(30)
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
 
             // Get production targets for each date
             $targetData = [];
@@ -210,9 +212,11 @@ class BatchDashboard extends Page
             $data = DB::table('v_feed_per_egg')
                 ->where('batch_id', $this->record->id)
                 ->whereNotNull('kg_per_egg')
-                ->orderBy('date')
+                ->orderBy('date', 'desc')
                 ->limit(30)
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
 
             return [
                 'labels' => $data->pluck('date')->map(fn($d) => \Carbon\Carbon::parse($d)->format('M d'))->toArray(),
@@ -227,11 +231,13 @@ class BatchDashboard extends Page
     {
         try {
             $data = MortalityLog::where('batch_id', $this->record->id)
-                ->orderBy('date')
+                ->orderBy('date', 'desc')
                 ->selectRaw('date, SUM(count) as total')
                 ->groupBy('date')
                 ->limit(30)
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
 
             $cumulative = 0;
             $cumulativeData = $data->map(function ($item) use (&$cumulative) {
@@ -268,9 +274,11 @@ class BatchDashboard extends Page
     {
         try {
             $data = DailyProduction::where('batch_id', $this->record->id)
-                ->orderBy('date')
+                ->orderBy('date', 'desc')
                 ->limit(30)
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
 
             // Calculate expected egg production based on target
             $birdsAlive = $this->getBirdsAlive();
@@ -304,11 +312,13 @@ class BatchDashboard extends Page
     {
         try {
             $data = DailyFeedIntake::where('batch_id', $this->record->id)
-                ->orderBy('date')
+                ->orderBy('date', 'desc')
                 ->selectRaw('date, SUM(kg_given) as total_kg')
                 ->groupBy('date')
                 ->limit(30)
-                ->get();
+                ->get()
+                ->reverse()
+                ->values();
 
             // Calculate target feed per day (in kg for the flock)
             $birdsAlive = $this->getBirdsAlive();
@@ -481,4 +491,3 @@ class BatchDashboard extends Page
         }
     }
 }
-
