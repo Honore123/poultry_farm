@@ -20,7 +20,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Spatie\Permission\PermissionRegistrar;
 
 class UserResource extends Resource
 {
@@ -116,13 +115,10 @@ class UserResource extends Resource
                                 $query->whereRaw('1 = 0');
                             })
                             ->saveRelationshipsUsing(function (Forms\Components\CheckboxList $component, $record, $state, Get $get) {
-                                $tenantId = $get('tenant_id')
+                                $tenantId = $record->tenant_id
+                                    ?? $get('tenant_id')
                                     ?? app(TenantContext::class)->currentTenantId()
-                                    ?? $record->tenant_id;
-
-                                if (class_exists(PermissionRegistrar::class)) {
-                                    app(PermissionRegistrar::class)->setPermissionsTeamId($tenantId);
-                                }
+                                    ?? auth()->user()?->tenant_id;
 
                                 if (!$tenantId) {
                                     $record->syncRoles([]);
@@ -139,7 +135,24 @@ class UserResource extends Resource
                                     ->where('tenant_id', $tenantId)
                                     ->get();
 
-                                $record->syncRoles($roles);
+                                $tenant = Tenant::query()->find($tenantId);
+                                if ($tenant) {
+                                    app(TenantContext::class)->runForTenant($tenant, function () use ($record, $roles): void {
+                                        $record->syncRoles($roles);
+                                    });
+                                } else {
+                                    $record->syncRoles($roles);
+                                }
+
+                                if ($roles->isNotEmpty()) {
+                                    $pivotTable = config('permission.table_names.model_has_roles', 'model_has_roles');
+
+                                    DB::table($pivotTable)
+                                        ->where('model_id', $record->getKey())
+                                        ->where('model_type', $record->getMorphClass())
+                                        ->whereIn('role_id', $roles->pluck('id')->all())
+                                        ->update(['tenant_id' => $tenantId]);
+                                }
                             })
                             ->columns(3)
                             ->helperText('Select the roles for this user'),

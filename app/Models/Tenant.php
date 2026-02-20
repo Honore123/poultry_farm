@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Role;
+use App\Support\DefaultRolePermissions;
 use App\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -39,7 +40,23 @@ class Tenant extends SpatieTenant
                     ->first();
 
                 if ($adminRole) {
-                    $adminRole->syncPermissions(Permission::all());
+                    $adminRole->givePermissionTo(Permission::all());
+                }
+
+                $managerRole = Role::query()
+                    ->where('name', 'manager')
+                    ->first();
+
+                if ($managerRole) {
+                    $managerRole->givePermissionTo(DefaultRolePermissions::manager());
+                }
+
+                $staffRole = Role::query()
+                    ->where('name', 'staff')
+                    ->first();
+
+                if ($staffRole) {
+                    $staffRole->givePermissionTo(DefaultRolePermissions::staff());
                 }
             });
 
