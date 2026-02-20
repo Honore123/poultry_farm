@@ -36,14 +36,19 @@ class RecordMortalityResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('batch_id')
                             ->label('Select Batch')
-                            ->options(
-                                Batch::whereIn('status', ['brooding', 'growing', 'laying'])
-                                    ->pluck('code', 'id')
-                            )
                             ->required()
                             ->searchable()
                             ->default(request()->query('batch'))
                             ->live()
+                            ->getSearchResultsUsing(fn (string $search) => Batch::whereIn('status', ['brooding', 'growing', 'laying'])
+                                ->where('code', 'like', "%{$search}%")
+                                ->orderBy('code')
+                                ->limit(20)
+                                ->pluck('code', 'id')
+                                ->toArray())
+                            ->getOptionLabelUsing(fn ($value) => Batch::whereKey($value)->value('code'))
+                            ->afterStateUpdated(fn ($state, Forms\Set $set) => static::setBirdsAlive($state, $set))
+                            ->afterStateHydrated(fn ($state, Forms\Set $set) => static::setBirdsAlive($state, $set))
                             ->columnSpanFull(),
 
                         Forms\Components\DatePicker::make('date')
@@ -75,20 +80,18 @@ class RecordMortalityResource extends Resource
                                 },
                             ])
                             ->helperText(function (Get $get) {
-                                $batchId = $get('batch_id');
-                                if (!$batchId) return 'Select a batch first';
-                                
-                                $batch = Batch::find($batchId);
-                                if (!$batch) return '';
-                                
-                                $totalMortality = MortalityLog::where('batch_id', $batchId)->sum('count');
-                                $birdsAlive = $batch->placement_qty - $totalMortality;
-                                
+                                $birdsAlive = $get('birds_alive');
+                                if ($birdsAlive === null) {
+                                    return 'Select a batch first';
+                                }
+
                                 return "Birds alive: {$birdsAlive}";
                             })
                             ->autofocus()
                             ->extraInputAttributes(['class' => 'text-2xl font-bold'])
                             ->columnSpanFull(),
+
+                        Forms\Components\Hidden::make('birds_alive'),
 
                         Forms\Components\Select::make('cause')
                             ->label('Cause of Death')
@@ -106,6 +109,25 @@ class RecordMortalityResource extends Resource
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    protected static function setBirdsAlive($state, Forms\Set $set): void
+    {
+        if (!$state) {
+            $set('birds_alive', null);
+            return;
+        }
+
+        $batch = Batch::find($state);
+        if (!$batch) {
+            $set('birds_alive', null);
+            return;
+        }
+
+        $totalMortality = MortalityLog::where('batch_id', $state)->sum('count');
+        $birdsAlive = $batch->placement_qty - $totalMortality;
+
+        $set('birds_alive', max(0, $birdsAlive));
     }
 
     public static function table(Table $table): Table
@@ -166,4 +188,3 @@ class RecordMortalityResource extends Resource
         ];
     }
 }
-

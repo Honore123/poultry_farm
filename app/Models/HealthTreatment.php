@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class HealthTreatment extends Model
+class HealthTreatment extends TenantModel
 {
     use LogsActivity;
 

@@ -4,18 +4,23 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
 use App\Mail\UserInvitationMail;
+use App\Models\Tenant;
+use App\Models\Role;
 use App\Models\User;
+use App\Tenancy\TenantContext;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class UserResource extends Resource
 {
@@ -33,6 +38,36 @@ class UserResource extends Resource
             ->schema([
                 Forms\Components\Section::make('User Details')
                     ->schema([
+                        Forms\Components\Select::make('tenant_id')
+                            ->label('Tenant')
+                            ->options(fn () => Tenant::query()->orderBy('name')->pluck('name', 'id'))
+                            ->searchable()
+                            ->required(fn () => auth()->user()?->is_super_admin ?? false)
+                            ->default(fn () => app(TenantContext::class)->currentTenantId() ?? auth()->user()?->tenant_id)
+                            ->visible(fn () => auth()->user()?->is_super_admin ?? false)
+                            ->live()
+                            ->afterStateHydrated(function ($state) {
+                                if (!auth()->user()?->is_super_admin) {
+                                    return;
+                                }
+
+                                session(['tenant_id' => $state ?: null]);
+
+                                $tenant = $state ? Tenant::query()->find($state) : null;
+                                $context = app(TenantContext::class);
+                                $context->setTenant($tenant);
+                                $context->applyPermissionContext($tenant);
+                            })
+                            ->afterStateUpdated(function ($state) {
+                                if (auth()->user()?->is_super_admin) {
+                                    session(['tenant_id' => $state ?: null]);
+                                    $tenant = $state ? Tenant::query()->find($state) : null;
+                                    $context = app(TenantContext::class);
+                                    $context->setTenant($tenant);
+                                    $context->applyPermissionContext($tenant);
+                                }
+                            })
+                            ->columnSpanFull(),
                         Forms\Components\TextInput::make('name')
                             ->required()
                             ->maxLength(255),
@@ -41,6 +76,10 @@ class UserResource extends Resource
                             ->required()
                             ->unique(ignoreRecord: true)
                             ->maxLength(255),
+                        Forms\Components\Toggle::make('is_super_admin')
+                            ->label('Super Admin')
+                            ->helperText('Super admins can access all tenants and manage global permissions.')
+                            ->visible(fn () => auth()->user()?->is_super_admin ?? false),
                         Forms\Components\Placeholder::make('invitation_notice')
                             ->label('')
                             ->content('📧 An invitation email will be sent to this user to set their password.')
@@ -64,7 +103,44 @@ class UserResource extends Resource
                 Forms\Components\Section::make('Roles')
                     ->schema([
                         Forms\Components\CheckboxList::make('roles')
-                            ->relationship('roles', 'name')
+                            ->relationship('roles', 'name', function (Builder $query) {
+                                $tenantId = app(TenantContext::class)->currentTenantId()
+                                    ?? auth()->user()?->tenant_id;
+
+                                if ($tenantId) {
+                                    $roleTable = $query->getModel()->getTable();
+                                    $query->where($roleTable . '.tenant_id', $tenantId);
+                                    return;
+                                }
+
+                                $query->whereRaw('1 = 0');
+                            })
+                            ->saveRelationshipsUsing(function (Forms\Components\CheckboxList $component, $record, $state, Get $get) {
+                                $tenantId = $get('tenant_id')
+                                    ?? app(TenantContext::class)->currentTenantId()
+                                    ?? $record->tenant_id;
+
+                                if (class_exists(PermissionRegistrar::class)) {
+                                    app(PermissionRegistrar::class)->setPermissionsTeamId($tenantId);
+                                }
+
+                                if (!$tenantId) {
+                                    $record->syncRoles([]);
+                                    return;
+                                }
+
+                                $roleIds = collect($state ?? [])
+                                    ->filter()
+                                    ->values()
+                                    ->all();
+
+                                $roles = Role::query()
+                                    ->whereIn('id', $roleIds)
+                                    ->where('tenant_id', $tenantId)
+                                    ->get();
+
+                                $record->syncRoles($roles);
+                            })
                             ->columns(3)
                             ->helperText('Select the roles for this user'),
                     ]),
@@ -75,6 +151,11 @@ class UserResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('tenant.name')
+                    ->label('Tenant')
+                    ->sortable()
+                    ->toggleable()
+                    ->visible(fn () => auth()->user()?->is_super_admin ?? false),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
@@ -160,6 +241,23 @@ class UserResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+        $context = app(TenantContext::class);
+        $tenantId = $context->currentTenantId();
+
+        if ($tenantId) {
+            return $query->where('tenant_id', $tenantId);
+        }
+
+        if (!$context->isSuperAdmin()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
     public static function getPages(): array
     {
         return [
@@ -169,4 +267,3 @@ class UserResource extends Resource
         ];
     }
 }
-

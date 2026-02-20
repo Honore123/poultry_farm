@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenantOrTemplate;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -9,6 +10,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 class EggGradingTarget extends Model
 {
     use LogsActivity;
+    use BelongsToTenantOrTemplate;
 
     public function getActivitylogOptions(): LogOptions
     {
@@ -20,6 +22,7 @@ class EggGradingTarget extends Model
     }
 
     protected $fillable = [
+        'tenant_id',
         'week',
         'avg_egg_weight_g',
         'pct_small',

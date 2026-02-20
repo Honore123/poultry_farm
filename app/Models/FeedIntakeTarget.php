@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenantOrTemplate;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -9,6 +10,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 class FeedIntakeTarget extends Model
 {
     use LogsActivity;
+    use BelongsToTenantOrTemplate;
 
     public function getActivitylogOptions(): LogOptions
     {
@@ -20,6 +22,7 @@ class FeedIntakeTarget extends Model
     }
 
     protected $fillable = [
+        'tenant_id',
         'min_week',
         'max_week',
         'stage',
@@ -27,4 +30,3 @@ class FeedIntakeTarget extends Model
         'grams_per_bird_per_day_max',
     ];
 }
-

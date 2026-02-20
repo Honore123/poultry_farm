@@ -11,7 +11,7 @@ use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Spatie\Activitylog\Models\Activity;
+use App\Models\Activity;
 
 class ActivityLogResource extends Resource
 {
@@ -31,7 +31,7 @@ class ActivityLogResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasRole('admin') ?? false;
+        return auth()->user()?->is_super_admin || auth()->user()?->hasRole('admin');
     }
 
     public static function canCreate(): bool
@@ -103,6 +103,11 @@ class ActivityLogResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('tenant.name')
+                    ->label('Tenant')
+                    ->sortable()
+                    ->toggleable()
+                    ->visible(fn () => auth()->user()?->is_super_admin ?? false),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Date & Time')
                     ->dateTime()
@@ -194,4 +199,3 @@ class ActivityLogResource extends Resource
         ];
     }
 }
-

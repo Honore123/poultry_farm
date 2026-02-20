@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Tenancy\TenantContext;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
 
@@ -20,7 +21,9 @@ class FeedPerEggChartWidget extends ChartWidget
 
     protected function getData(): array
     {
+        $tenantId = app(TenantContext::class)->currentTenantId();
         $data = DB::table('v_feed_per_egg')
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
             ->whereBetween('date', [now()->subDays(14), now()])
             ->whereNotNull('kg_per_egg')
             ->orderBy('date')
@@ -67,4 +70,3 @@ class FeedPerEggChartWidget extends ChartWidget
         ];
     }
 }
-

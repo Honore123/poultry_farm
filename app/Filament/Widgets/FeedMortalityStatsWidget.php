@@ -7,6 +7,7 @@ use App\Models\DailyFeedIntake;
 use App\Models\MortalityLog;
 use App\Models\ProductionTarget;
 use App\Models\RearingTarget;
+use App\Tenancy\TenantContext;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,9 @@ class FeedMortalityStatsWidget extends BaseWidget
     protected function getStats(): array
     {
         // Feed per egg from view (last 7 days)
+        $tenantId = app(TenantContext::class)->currentTenantId();
         $feedPerEgg = DB::table('v_feed_per_egg')
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
             ->whereBetween('date', [now()->subDays(7), now()])
             ->whereNotNull('kg_per_egg')
             ->avg('kg_per_egg');
@@ -213,4 +216,3 @@ class FeedMortalityStatsWidget extends BaseWidget
             ->toArray();
     }
 }
-

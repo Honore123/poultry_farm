@@ -4,11 +4,13 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\RearingTargetResource\Pages;
 use App\Models\RearingTarget;
+use App\Tenancy\TenantContext;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rules\Unique;
 
 class RearingTargetResource extends Resource
 {
@@ -33,7 +35,21 @@ class RearingTargetResource extends Resource
                             ->numeric()
                             ->minValue(1)
                             ->maxValue(18)
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: function (Unique $rule) {
+                                    $tenantId = app(TenantContext::class)->currentTenantId()
+                                        ?? auth()->user()?->tenant_id;
+
+                                    if ($tenantId) {
+                                        $rule->where('tenant_id', $tenantId);
+                                    } else {
+                                        $rule->whereNull('tenant_id');
+                                    }
+
+                                    return $rule;
+                                }
+                            )
                             ->label('Week'),
                         Forms\Components\TextInput::make('age_days_from')
                             ->numeric()
@@ -196,4 +212,3 @@ class RearingTargetResource extends Resource
         ];
     }
 }
-

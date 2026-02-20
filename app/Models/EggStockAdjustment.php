@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class EggStockAdjustment extends Model
+class EggStockAdjustment extends TenantModel
 {
     use LogsActivity;
 

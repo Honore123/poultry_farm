@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenantOrTemplate;
 use Illuminate\Database\Eloquent\Model;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -9,6 +10,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 class ProductionCycleTarget extends Model
 {
     use LogsActivity;
+    use BelongsToTenantOrTemplate;
 
     public function getActivitylogOptions(): LogOptions
     {
@@ -20,6 +22,7 @@ class ProductionCycleTarget extends Model
     }
 
     protected $fillable = [
+        'tenant_id',
         'cycle_end_week',
         'livability_pct',
         'eggs_hh',

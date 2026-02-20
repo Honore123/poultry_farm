@@ -12,7 +12,7 @@ class EmployeeSalaryPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('admin') || $user->can('view_employee_salaries');
+        return $user->is_super_admin || $user->hasRole('admin') || $user->can('view_employee_salaries');
     }
 
     /**
@@ -20,7 +20,7 @@ class EmployeeSalaryPolicy
      */
     public function view(User $user, EmployeeSalary $employeeSalary): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->is_super_admin || $user->hasRole('admin')) {
             return true;
         }
 
@@ -33,7 +33,7 @@ class EmployeeSalaryPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     /**
@@ -41,7 +41,7 @@ class EmployeeSalaryPolicy
      */
     public function update(User $user, EmployeeSalary $employeeSalary): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     /**
@@ -49,12 +49,11 @@ class EmployeeSalaryPolicy
      */
     public function delete(User $user, EmployeeSalary $employeeSalary): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     public function deleteAny(User $user): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 }
-

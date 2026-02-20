@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\PermissionResource\Pages;
 
 use App\Filament\Resources\PermissionResource;
+use App\Models\Role;
 use Filament\Resources\Pages\CreateRecord;
-use Spatie\Permission\Models\Role;
 
 class CreatePermission extends CreateRecord
 {
@@ -20,8 +20,8 @@ class CreatePermission extends CreateRecord
     protected function afterCreate(): void
     {
         // Automatically give the new permission to admin role
-        $adminRole = Role::where('name', 'admin')->first();
-        if ($adminRole) {
+        $adminRoles = Role::withoutGlobalScopes()->where('name', 'admin')->get();
+        foreach ($adminRoles as $adminRole) {
             $adminRole->givePermissionTo($this->record);
         }
         

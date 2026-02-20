@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SalesOrder extends Model
+class SalesOrder extends TenantModel
 {
     use LogsActivity;
 

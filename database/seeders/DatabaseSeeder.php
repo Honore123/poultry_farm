@@ -9,9 +9,11 @@ use App\Models\FeedIntakeTarget;
 use App\Models\House;
 use App\Models\InventoryItem;
 use App\Models\Supplier;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\PermissionRegistrar;
 
 class DatabaseSeeder extends Seeder
 {
@@ -25,6 +27,7 @@ class DatabaseSeeder extends Seeder
         // These contain reference data needed for the app to work
         // =========================================================
         $this->call([
+            TenantSeeder::class,               // Required: Tenant registry
             RolesAndPermissionsSeeder::class,    // Required: User roles and permissions
             RearingTargetsSeeder::class,          // Required: Rearing phase targets
             ProductionTargetsSeeder::class,       // Required: Production phase targets
@@ -58,11 +61,18 @@ class DatabaseSeeder extends Seeder
      */
     protected function createTestUsers(): void
     {
+        $tenant = Tenant::where('name', 'Kabajogo Farm')->first();
+
+        if ($tenant) {
+            app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        }
+
         // Admin user
         $admin = User::firstOrCreate(
             ['email' => 'admin@farm.com'],
             [
                 'name' => 'Admin User',
+                'tenant_id' => $tenant?->id,
                 'password' => Hash::make('password'),
             ]
         );
@@ -73,6 +83,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'manager@farm.com'],
             [
                 'name' => 'Manager User',
+                'tenant_id' => $tenant?->id,
                 'password' => Hash::make('password'),
             ]
         );
@@ -83,6 +94,7 @@ class DatabaseSeeder extends Seeder
             ['email' => 'staff@farm.com'],
             [
                 'name' => 'Staff User',
+                'tenant_id' => $tenant?->id,
                 'password' => Hash::make('password'),
             ]
         );

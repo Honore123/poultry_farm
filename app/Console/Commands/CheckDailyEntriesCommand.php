@@ -8,8 +8,10 @@ use App\Models\DailyFeedIntake;
 use App\Models\DailyProduction;
 use App\Models\DailyWaterUsage;
 use App\Models\MortalityLog;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Models\VaccinationEvent;
+use App\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
@@ -27,6 +29,28 @@ class CheckDailyEntriesCommand extends Command
         
         $this->info("Checking daily entries for: {$date->format('Y-m-d')}");
 
+        $tenants = Tenant::query()->orderBy('name')->get();
+
+        if ($tenants->isEmpty()) {
+            $this->warn('No tenants found.');
+            return self::SUCCESS;
+        }
+
+        $context = app(TenantContext::class);
+
+        foreach ($tenants as $tenant) {
+            $this->info("\nTenant: {$tenant->name}");
+
+            $context->runForTenant($tenant, function () use ($tenant, $date) {
+                $this->handleTenant($tenant, $date);
+            });
+        }
+
+        return self::SUCCESS;
+    }
+
+    protected function handleTenant(Tenant $tenant, $date): void
+    {
         // Get active batches
         $activeBatches = Batch::whereIn('status', ['brooding', 'growing', 'laying'])
             ->with(['farm', 'house'])
@@ -34,7 +58,7 @@ class CheckDailyEntriesCommand extends Command
 
         if ($activeBatches->isEmpty()) {
             $this->info('No active batches found.');
-            return self::SUCCESS;
+            return;
         }
 
         $missingEntries = [];
@@ -71,12 +95,10 @@ class CheckDailyEntriesCommand extends Command
 
         // Send email if there are issues
         if (!empty($missingEntries) || !empty($upcomingVaccinations) || !empty($overdueVaccinations)) {
-            $this->sendNotification($date, $missingEntries, $upcomingVaccinations, $overdueVaccinations);
+            $this->sendNotification($tenant, $date, $missingEntries, $upcomingVaccinations, $overdueVaccinations);
         } else {
             $this->info('✓ All entries complete and no pending vaccinations!');
         }
-
-        return self::SUCCESS;
     }
 
     protected function checkMissingEntries(Batch $batch, $date): array
@@ -219,7 +241,7 @@ class CheckDailyEntriesCommand extends Command
         }
     }
 
-    protected function sendNotification($date, array $missingEntries, array $upcomingVaccinations, array $overdueVaccinations): void
+    protected function sendNotification(Tenant $tenant, $date, array $missingEntries, array $upcomingVaccinations, array $overdueVaccinations): void
     {
         $email = $this->option('email');
         
@@ -227,7 +249,7 @@ class CheckDailyEntriesCommand extends Command
             $recipients = [$email];
         } else {
             // Send to all users (in production, you might want to filter by role)
-            $recipients = User::pluck('email')->toArray();
+            $recipients = User::where('tenant_id', $tenant->id)->pluck('email')->toArray();
         }
 
         if (empty($recipients)) {
@@ -247,4 +269,3 @@ class CheckDailyEntriesCommand extends Command
         $this->info("\n📧 Email notification sent to: " . implode(', ', $recipients));
     }
 }
-

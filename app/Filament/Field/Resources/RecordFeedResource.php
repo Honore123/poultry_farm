@@ -36,12 +36,15 @@ class RecordFeedResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('batch_id')
                             ->label('Select Batch')
-                            ->options(
-                                Batch::whereIn('status', ['brooding', 'growing', 'laying'])
-                                    ->pluck('code', 'id')
-                            )
                             ->required()
                             ->searchable()
+                            ->getSearchResultsUsing(fn (string $search) => Batch::whereIn('status', ['brooding', 'growing', 'laying'])
+                                ->where('code', 'like', "%{$search}%")
+                                ->orderBy('code')
+                                ->limit(20)
+                                ->pluck('code', 'id')
+                                ->toArray())
+                            ->getOptionLabelUsing(fn ($value) => Batch::whereKey($value)->value('code'))
                             ->default(request()->query('batch'))
                             ->columnSpanFull(),
 
@@ -54,17 +57,31 @@ class RecordFeedResource extends Resource
 
                         Forms\Components\Select::make('inventory_lot_id')
                             ->label('Select Feed Lot')
-                            ->options(function () {
+                            ->required()
+                            ->searchable()
+                            ->getSearchResultsUsing(function (string $search) {
                                 return InventoryLot::whereHas('item', fn ($q) => $q->where('category', 'feed'))
                                     ->where('qty_on_hand', '>', 0)
+                                    ->where(function ($query) use ($search) {
+                                        $query->where('lot_code', 'like', "%{$search}%")
+                                            ->orWhereHas('item', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+                                    })
                                     ->with('item')
+                                    ->orderByDesc('qty_on_hand')
+                                    ->limit(20)
                                     ->get()
                                     ->mapWithKeys(fn ($lot) => [
                                         $lot->id => "{$lot->item->name} - {$lot->lot_code} ({$lot->qty_on_hand} kg available)"
-                                    ]);
+                                    ])
+                                    ->toArray();
                             })
-                            ->required()
-                            ->searchable()
+                            ->getOptionLabelUsing(function ($value) {
+                                $lot = InventoryLot::with('item')->find($value);
+                                if (!$lot) {
+                                    return null;
+                                }
+                                return "{$lot->item->name} - {$lot->lot_code} ({$lot->qty_on_hand} kg available)";
+                            })
                             ->live()
                             ->afterStateUpdated(function ($state, Forms\Set $set) {
                                 if ($state) {

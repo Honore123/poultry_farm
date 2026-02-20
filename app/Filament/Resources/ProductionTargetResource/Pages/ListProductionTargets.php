@@ -6,6 +6,7 @@ use App\Filament\Resources\ProductionTargetResource;
 use App\Filament\Resources\ProductionTargetResource\Widgets\ProductionStatsWidget;
 use App\Models\Batch;
 use App\Models\MortalityLog;
+use App\Tenancy\TenantContext;
 use Filament\Actions;
 use Filament\Forms\Components\Select;
 use Filament\Resources\Pages\ListRecords;
@@ -64,6 +65,17 @@ class ListProductionTargets extends ListRecords
                 }),
             Actions\CreateAction::make(),
         ];
+    }
+
+    public function getSubheading(): ?string
+    {
+        $context = app(TenantContext::class);
+
+        if ($context->currentTenantId() || !$context->isSuperAdmin()) {
+            return null;
+        }
+
+        return 'Template mode: editing global defaults used for new tenants.';
     }
 
     protected function getSelectedBatchLabel(): string

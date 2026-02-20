@@ -34,12 +34,15 @@ class RecordWaterResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('batch_id')
                             ->label('Select Batch')
-                            ->options(
-                                Batch::whereIn('status', ['brooding', 'growing', 'laying'])
-                                    ->pluck('code', 'id')
-                            )
                             ->required()
                             ->searchable()
+                            ->getSearchResultsUsing(fn (string $search) => Batch::whereIn('status', ['brooding', 'growing', 'laying'])
+                                ->where('code', 'like', "%{$search}%")
+                                ->orderBy('code')
+                                ->limit(20)
+                                ->pluck('code', 'id')
+                                ->toArray())
+                            ->getOptionLabelUsing(fn ($value) => Batch::whereKey($value)->value('code'))
                             ->default(request()->query('batch'))
                             ->columnSpanFull(),
 
@@ -121,4 +124,3 @@ class RecordWaterResource extends Resource
         ];
     }
 }
-

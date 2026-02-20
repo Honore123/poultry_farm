@@ -3,6 +3,8 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\RoleResource\Pages;
+use App\Models\Role;
+use App\Tenancy\TenantContext;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -10,8 +12,8 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rules\Unique;
 use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
 
 class RoleResource extends Resource
 {
@@ -108,7 +110,16 @@ class RoleResource extends Resource
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->required()
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: function (Unique $rule) {
+                                    $tenantId = app(TenantContext::class)->currentTenantId();
+                                    if ($tenantId) {
+                                        $rule->where('tenant_id', $tenantId);
+                                    }
+                                    return $rule;
+                                }
+                            )
                             ->maxLength(255)
                             ->alphaDash()
                             ->helperText('Use lowercase letters, numbers, dashes, and underscores only')

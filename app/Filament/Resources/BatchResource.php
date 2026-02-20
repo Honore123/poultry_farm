@@ -5,11 +5,13 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\BatchResource\Pages;
 use App\Filament\Resources\BatchResource\RelationManagers;
 use App\Models\Batch;
+use App\Tenancy\TenantContext;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rules\Unique;
 
 class BatchResource extends Resource
 {
@@ -37,7 +39,19 @@ class BatchResource extends Resource
                         Forms\Components\TextInput::make('code')
                             ->label('Batch Code')
                             ->required()
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: function (Unique $rule) {
+                                    $tenantId = app(TenantContext::class)->currentTenantId()
+                                        ?? auth()->user()?->tenant_id;
+
+                                    if ($tenantId) {
+                                        $rule->where('tenant_id', $tenantId);
+                                    }
+
+                                    return $rule;
+                                }
+                            )
                             ->maxLength(50),
                         Forms\Components\TextInput::make('breed')
                             ->maxLength(100),

@@ -35,12 +35,15 @@ class RecordEggsResource extends Resource
                     ->schema([
                         Forms\Components\Select::make('batch_id')
                             ->label('Select Batch')
-                            ->options(
-                                Batch::whereIn('status', ['laying'])
-                                    ->pluck('code', 'id')
-                            )
                             ->required()
                             ->searchable()
+                            ->getSearchResultsUsing(fn (string $search) => Batch::whereIn('status', ['laying'])
+                                ->where('code', 'like', "%{$search}%")
+                                ->orderBy('code')
+                                ->limit(20)
+                                ->pluck('code', 'id')
+                                ->toArray())
+                            ->getOptionLabelUsing(fn ($value) => Batch::whereKey($value)->value('code'))
                             ->default(request()->query('batch'))
                             ->columnSpanFull(),
 
@@ -57,7 +60,6 @@ class RecordEggsResource extends Resource
                             ->required()
                             ->minValue(0)
                             ->maxValue(100000)
-                            ->live(onBlur: true)
                             ->autofocus()
                             ->extraInputAttributes(['class' => 'text-2xl font-bold'])
                             ->columnSpanFull(),
@@ -156,4 +158,3 @@ class RecordEggsResource extends Resource
         ];
     }
 }
-

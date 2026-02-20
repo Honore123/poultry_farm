@@ -4,6 +4,7 @@ namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Resources\UserResource;
 use App\Mail\UserInvitationMail;
+use App\Tenancy\TenantContext;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,15 @@ class CreateUser extends CreateRecord
     {
         // Generate a random password - user will set their own via email
         $data['password'] = Hash::make(Str::random(32));
+
+        if (empty($data['tenant_id'])) {
+            $data['tenant_id'] = app(TenantContext::class)->currentTenantId()
+                ?? auth()->user()?->tenant_id;
+        }
+
+        if (empty($data['tenant_id'])) {
+            throw new \Exception('A tenant must be selected before creating a user.');
+        }
         
         return $data;
     }

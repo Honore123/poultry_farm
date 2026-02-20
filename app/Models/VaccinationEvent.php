@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class VaccinationEvent extends Model
+class VaccinationEvent extends TenantModel
 {
     use LogsActivity;
 

@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class EmployeeSalary extends Model
+class EmployeeSalary extends TenantModel
 {
     use LogsActivity;
 

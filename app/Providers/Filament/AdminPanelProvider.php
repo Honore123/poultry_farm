@@ -57,6 +57,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                \App\Http\Middleware\SetTenantContext::class,
             ])
             ->routes(function () {
                 Route::get('/two-factor-challenge', TwoFactorChallenge::class)

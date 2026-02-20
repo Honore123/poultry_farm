@@ -12,7 +12,7 @@ class SalaryPaymentPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('admin') || $user->can('view_salary_payments');
+        return $user->is_super_admin || $user->hasRole('admin') || $user->can('view_salary_payments');
     }
 
     /**
@@ -20,7 +20,7 @@ class SalaryPaymentPolicy
      */
     public function view(User $user, SalaryPayment $salaryPayment): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->is_super_admin || $user->hasRole('admin')) {
             return true;
         }
 
@@ -33,7 +33,7 @@ class SalaryPaymentPolicy
      */
     public function create(User $user): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     /**
@@ -41,7 +41,7 @@ class SalaryPaymentPolicy
      */
     public function update(User $user, SalaryPayment $salaryPayment): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     /**
@@ -49,12 +49,11 @@ class SalaryPaymentPolicy
      */
     public function delete(User $user, SalaryPayment $salaryPayment): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 
     public function deleteAny(User $user): bool
     {
-        return $user->hasRole('admin');
+        return $user->is_super_admin || $user->hasRole('admin');
     }
 }
-

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SalesOrderPayment extends Model
+class SalesOrderPayment extends TenantModel
 {
     use LogsActivity;
 

@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Mail\LowInventoryAlertMail;
 use App\Models\InventoryLot;
+use App\Models\Tenant;
 use App\Models\User;
+use App\Tenancy\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
@@ -44,6 +46,28 @@ class CheckInventoryLevelsCommand extends Command
     {
         $this->info('Checking inventory levels...');
 
+        $tenants = Tenant::query()->orderBy('name')->get();
+
+        if ($tenants->isEmpty()) {
+            $this->warn('No tenants found.');
+            return self::SUCCESS;
+        }
+
+        $context = app(TenantContext::class);
+
+        foreach ($tenants as $tenant) {
+            $this->info("\nTenant: {$tenant->name}");
+
+            $context->runForTenant($tenant, function () use ($tenant) {
+                $this->handleTenant($tenant);
+            });
+        }
+
+        return self::SUCCESS;
+    }
+
+    protected function handleTenant(Tenant $tenant): void
+    {
         $lowStockItems = [];
         $criticalStockItems = [];
         $outOfStockItems = [];
@@ -103,12 +127,10 @@ class CheckInventoryLevelsCommand extends Command
 
         // Send email if there are alerts
         if (!empty($outOfStockItems) || !empty($criticalStockItems) || !empty($lowStockItems)) {
-            $this->sendNotification($outOfStockItems, $criticalStockItems, $lowStockItems);
+            $this->sendNotification($tenant, $outOfStockItems, $criticalStockItems, $lowStockItems);
         } else {
             $this->info('✓ All inventory levels are adequate!');
         }
-
-        return self::SUCCESS;
     }
 
     protected function displayResults(array $outOfStock, array $critical, array $low): void
@@ -135,7 +157,7 @@ class CheckInventoryLevelsCommand extends Command
         }
     }
 
-    protected function sendNotification(array $outOfStock, array $critical, array $low): void
+    protected function sendNotification(Tenant $tenant, array $outOfStock, array $critical, array $low): void
     {
         $email = $this->option('email');
         
@@ -143,7 +165,10 @@ class CheckInventoryLevelsCommand extends Command
             $recipients = [$email];
         } else {
             // Send to admin and manager users
-            $recipients = User::role(['admin', 'manager'])->pluck('email')->toArray();
+            $recipients = User::where('tenant_id', $tenant->id)
+                ->role(['admin', 'manager'])
+                ->pluck('email')
+                ->toArray();
         }
 
         if (empty($recipients)) {
@@ -162,4 +187,3 @@ class CheckInventoryLevelsCommand extends Command
         $this->info("\n📧 Email notification sent to: " . implode(', ', $recipients));
     }
 }
-

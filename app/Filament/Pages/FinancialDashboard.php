@@ -54,7 +54,7 @@ class FinancialDashboard extends Page implements HasForms
 
     public static function canAccess(): bool
     {
-        return Auth::user()?->hasRole('admin') ?? false;
+        return Auth::user()?->is_super_admin || Auth::user()?->hasRole('admin');
     }
 
     public function mount(): void

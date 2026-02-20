@@ -24,7 +24,7 @@ class SalaryPaymentResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->user()?->hasRole('admin') ?? false;
+        return auth()->user()?->is_super_admin || auth()->user()?->hasRole('admin');
     }
 
     public static function form(Form $form): Form
@@ -283,4 +283,3 @@ class SalaryPaymentResource extends Resource
         ];
     }
 }
-

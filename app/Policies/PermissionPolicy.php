@@ -19,21 +19,21 @@ class PermissionPolicy
 
     public function create(User $user): bool
     {
-        return $user->can('create_permissions');
+        return $user->is_super_admin && $user->can('create_permissions');
     }
 
     public function update(User $user, Permission $permission): bool
     {
-        return $user->can('edit_permissions');
+        return $user->is_super_admin && $user->can('edit_permissions');
     }
 
     public function delete(User $user, Permission $permission): bool
     {
-        return $user->can('delete_permissions');
+        return $user->is_super_admin && $user->can('delete_permissions');
     }
 
     public function deleteAny(User $user): bool
     {
-        return $user->can('delete_permissions');
+        return $user->is_super_admin && $user->can('delete_permissions');
     }
 }

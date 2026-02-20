@@ -25,7 +25,7 @@ class MySalary extends Page
         $user = Auth::user();
         
         // Only show to non-admin users who have a salary record
-        if ($user?->hasRole('admin')) {
+        if ($user?->is_super_admin || $user?->hasRole('admin')) {
             return false;
         }
 
@@ -111,4 +111,3 @@ class MySalary extends Page
         ];
     }
 }
-

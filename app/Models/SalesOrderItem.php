@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SalesOrderItem extends Model
+class SalesOrderItem extends TenantModel
 {
     use LogsActivity;
 

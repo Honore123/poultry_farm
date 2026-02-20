@@ -8,6 +8,7 @@ use App\Models\DailyFeedIntake;
 use App\Models\MortalityLog;
 use App\Models\ProductionTarget;
 use App\Models\RearingTarget;
+use App\Tenancy\TenantContext;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
@@ -24,12 +25,15 @@ class ProductionStatsWidget extends BaseWidget
     protected function getStats(): array
     {
         // Today's laying rate from view
+        $tenantId = app(TenantContext::class)->currentTenantId();
         $todayLayingRate = DB::table('v_daily_laying_rate')
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
             ->whereDate('date', today())
             ->avg('laying_rate_pct');
 
         // 7-day average laying rate
         $weekLayingRate = DB::table('v_daily_laying_rate')
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
             ->whereBetween('date', [now()->subDays(7), now()])
             ->avg('laying_rate_pct');
 
@@ -133,4 +137,3 @@ class ProductionStatsWidget extends BaseWidget
             ->toArray();
     }
 }
-

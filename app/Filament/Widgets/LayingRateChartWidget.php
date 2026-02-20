@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Tenancy\TenantContext;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
 
@@ -20,7 +21,9 @@ class LayingRateChartWidget extends ChartWidget
 
     protected function getData(): array
     {
+        $tenantId = app(TenantContext::class)->currentTenantId();
         $data = DB::table('v_daily_laying_rate')
+            ->when($tenantId, fn ($query) => $query->where('tenant_id', $tenantId))
             ->whereBetween('date', [now()->subDays(14), now()])
             ->orderBy('date')
             ->selectRaw('date, AVG(laying_rate_pct) as avg_rate, SUM(eggs_total) as total_eggs')
@@ -67,4 +70,3 @@ class LayingRateChartWidget extends ChartWidget
         ];
     }
 }
-

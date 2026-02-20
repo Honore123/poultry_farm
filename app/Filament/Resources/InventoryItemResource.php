@@ -4,11 +4,13 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\InventoryItemResource\Pages;
 use App\Models\InventoryItem;
+use App\Tenancy\TenantContext;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rules\Unique;
 
 class InventoryItemResource extends Resource
 {
@@ -32,7 +34,19 @@ class InventoryItemResource extends Resource
                         Forms\Components\TextInput::make('sku')
                             ->label('SKU')
                             ->maxLength(100)
-                            ->unique(ignoreRecord: true),
+                            ->unique(
+                                ignoreRecord: true,
+                                modifyRuleUsing: function (Unique $rule) {
+                                    $tenantId = app(TenantContext::class)->currentTenantId()
+                                        ?? auth()->user()?->tenant_id;
+
+                                    if ($tenantId) {
+                                        $rule->where('tenant_id', $tenantId);
+                                    }
+
+                                    return $rule;
+                                }
+                            ),
                         Forms\Components\Select::make('category')
                             ->options([
                                 'feed' => 'Feed',

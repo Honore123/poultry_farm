@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Mail;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
-class SalaryPayment extends Model
+class SalaryPayment extends TenantModel
 {
     use LogsActivity;
 
